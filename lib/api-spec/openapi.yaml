@@ -3,13 +3,21 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: Food Verse AI multimodal food intelligence API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: food
+    description: Food scanning, nutrition, and freshness
+  - name: kitchen
+    description: Kitchen hygiene and safety audits
+  - name: meals
+    description: Meal planning, tracking, and profile
+  - name: cooking
+    description: Smart cooking assistance
 paths:
   /healthz:
     get:
@@ -24,6 +32,224 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /v1/dashboard:
+    get:
+      operationId: getDashboard
+      tags: [food]
+      summary: Get the dashboard overview and recent activity
+      responses:
+        "200":
+          description: Dashboard summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardSummary"
+  /v1/scans:
+    get:
+      operationId: listScans
+      tags: [food]
+      summary: List recent food scans
+      responses:
+        "200":
+          description: Recent scans
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/FoodScan"
+  /v1/scan-food:
+    post:
+      operationId: scanFood
+      tags: [food]
+      summary: Analyze food and save a nutrition scan
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FoodScanInput"
+      responses:
+        "201":
+          description: Food analysis
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FoodScan"
+  /v1/detect-freshness:
+    post:
+      operationId: detectFreshness
+      tags: [food]
+      summary: Estimate food freshness from a description or uploaded image
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FreshnessInput"
+      responses:
+        "200":
+          description: Freshness estimate
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FreshnessResult"
+  /v1/audits:
+    get:
+      operationId: listAudits
+      tags: [kitchen]
+      summary: List previous hygiene audits
+      responses:
+        "200":
+          description: Hygiene audit history
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/HygieneAudit"
+  /v1/analyze-hygiene:
+    post:
+      operationId: analyzeHygiene
+      tags: [kitchen]
+      summary: Analyze a sample or uploaded kitchen video
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HygieneAuditInput"
+      responses:
+        "201":
+          description: Hygiene audit scorecard
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HygieneAudit"
+  /v1/profile:
+    get:
+      operationId: getProfile
+      tags: [meals]
+      summary: Get nutrition goals and dietary preferences
+      responses:
+        "200":
+          description: User profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NutritionProfile"
+    put:
+      operationId: saveProfile
+      tags: [meals]
+      summary: Save nutrition goals and dietary preferences
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NutritionProfileInput"
+      responses:
+        "200":
+          description: Saved profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NutritionProfile"
+  /v1/meal-plan:
+    get:
+      operationId: getMealPlan
+      tags: [meals]
+      summary: Get the current weekly meal plan
+      responses:
+        "200":
+          description: Current plan and grocery list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MealPlan"
+    post:
+      operationId: generateMealPlan
+      tags: [meals]
+      summary: Generate a weekly meal plan from the saved profile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MealPlanInput"
+      responses:
+        "201":
+          description: New weekly meal plan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MealPlan"
+  /v1/meals/{mealId}:
+    patch:
+      operationId: updateMealCompletion
+      tags: [meals]
+      summary: Mark a planned meal as eaten or uneaten
+      parameters:
+        - name: mealId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MealCompletionInput"
+      responses:
+        "200":
+          description: Updated planned meal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlannedMeal"
+  /v1/grocery-list/{itemId}:
+    patch:
+      operationId: updateGroceryItem
+      tags: [meals]
+      summary: Check or uncheck a grocery item
+      parameters:
+        - name: itemId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GroceryItemInput"
+      responses:
+        "200":
+          description: Updated grocery item
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GroceryItem"
+  /v1/chef-guide:
+    post:
+      operationId: createChefGuide
+      tags: [cooking]
+      summary: Create a guided recipe and allergy-aware substitutions
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChefGuideInput"
+      responses:
+        "200":
+          description: Cooking guide
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChefGuide"
 components:
   schemas:
     HealthStatus:
@@ -33,4 +259,228 @@ components:
           type: string
       required:
         - status
+    Nutrition:
+      type: object
+      properties:
+        calories: { type: integer }
+        protein: { type: number }
+        carbs: { type: number }
+        fat: { type: number }
+        fiber: { type: number }
+        micronutrients:
+          type: array
+          items: { type: string }
+      required: [calories, protein, carbs, fat, fiber, micronutrients]
+    HealthScoreSignal:
+      type: object
+      properties:
+        label: { type: string }
+        score: { type: integer, minimum: 0, maximum: 100 }
+        detail: { type: string }
+      required: [label, score, detail]
+    FreshnessResult:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [fresh, consume_soon, unsafe]
+        label: { type: string }
+        guidance: { type: string }
+        storageTip: { type: string }
+        confidence: { type: integer, minimum: 0, maximum: 100 }
+        analyzedAt: { type: string, format: date-time }
+      required: [status, label, guidance, storageTip, confidence, analyzedAt]
+    FoodScan:
+      type: object
+      properties:
+        id: { type: string }
+        dishName: { type: string }
+        createdAt: { type: string, format: date-time }
+        source: { type: string, enum: [image, video, audio, text] }
+        fileName: { type: ["string", "null"] }
+        ingredients:
+          type: array
+          items: { type: string }
+        confidence: { type: integer, minimum: 0, maximum: 100 }
+        nutrition: { $ref: "#/components/schemas/Nutrition" }
+        healthScore: { type: integer, minimum: 0, maximum: 100 }
+        healthBreakdown:
+          type: array
+          items: { $ref: "#/components/schemas/HealthScoreSignal" }
+        freshness: { $ref: "#/components/schemas/FreshnessResult" }
+      required: [id, dishName, createdAt, source, fileName, ingredients, confidence, nutrition, healthScore, healthBreakdown, freshness]
+    FoodScanInput:
+      type: object
+      properties:
+        source: { type: string, enum: [image, video, audio, text] }
+        fileName: { type: ["string", "null"] }
+        description: { type: string, maxLength: 1000 }
+      required: [source, description]
+    FreshnessInput:
+      type: object
+      properties:
+        food: { type: string, minLength: 1, maxLength: 120 }
+        fileName: { type: ["string", "null"] }
+        notes: { type: string, maxLength: 1000 }
+      required: [food]
+    HygieneAudit:
+      type: object
+      properties:
+        id: { type: string }
+        kitchenName: { type: string }
+        createdAt: { type: string, format: date-time }
+        videoName: { type: ["string", "null"] }
+        gloveCompliance: { type: integer, minimum: 0, maximum: 100 }
+        hairnetCompliance: { type: integer, minimum: 0, maximum: 100 }
+        cleanlinessScore: { type: integer, minimum: 0, maximum: 100 }
+        contaminationRisk: { type: string, enum: [low, moderate, high] }
+        safetyScore: { type: integer, minimum: 0, maximum: 100 }
+        alerts:
+          type: array
+          items: { type: string }
+      required: [id, kitchenName, createdAt, videoName, gloveCompliance, hairnetCompliance, cleanlinessScore, contaminationRisk, safetyScore, alerts]
+    HygieneAuditInput:
+      type: object
+      properties:
+        kitchenName: { type: string, minLength: 1, maxLength: 120 }
+        videoName: { type: ["string", "null"] }
+        mode: { type: string, enum: [sample, upload] }
+      required: [kitchenName, mode]
+    NutritionProfile:
+      type: object
+      properties:
+        calorieTarget: { type: integer, minimum: 800, maximum: 6000 }
+        goal: { type: string, enum: [balanced, keto, vegan, muscle_gain, low_carb, weight_loss] }
+        allergies:
+          type: array
+          items: { type: string }
+        dietaryNotes: { type: string }
+      required: [calorieTarget, goal, allergies, dietaryNotes]
+    NutritionProfileInput:
+      type: object
+      properties:
+        calorieTarget: { type: integer, minimum: 800, maximum: 6000 }
+        goal: { type: string, enum: [balanced, keto, vegan, muscle_gain, low_carb, weight_loss] }
+        allergies:
+          type: array
+          items: { type: string }
+        dietaryNotes: { type: string, maxLength: 500 }
+      required: [calorieTarget, goal, allergies, dietaryNotes]
+    PlannedMeal:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        slot: { type: string, enum: [breakfast, lunch, dinner] }
+        calories: { type: integer }
+        protein: { type: number }
+        carbs: { type: number }
+        fat: { type: number }
+        completed: { type: boolean }
+        tags:
+          type: array
+          items: { type: string }
+      required: [id, name, slot, calories, protein, carbs, fat, completed, tags]
+    MealDay:
+      type: object
+      properties:
+        date: { type: string, format: date }
+        label: { type: string }
+        meals:
+          type: array
+          items: { $ref: "#/components/schemas/PlannedMeal" }
+      required: [date, label, meals]
+    GroceryItem:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        quantity: { type: string }
+        checked: { type: boolean }
+        category: { type: string }
+      required: [id, name, quantity, checked, category]
+    MealPlan:
+      type: object
+      properties:
+        weekOf: { type: string, format: date }
+        days:
+          type: array
+          items: { $ref: "#/components/schemas/MealDay" }
+        groceryList:
+          type: array
+          items: { $ref: "#/components/schemas/GroceryItem" }
+      required: [weekOf, days, groceryList]
+    MealPlanInput:
+      type: object
+      properties:
+        weekOf: { type: ["string", "null"], format: date }
+      required: [weekOf]
+    MealCompletionInput:
+      type: object
+      properties:
+        completed: { type: boolean }
+      required: [completed]
+    GroceryItemInput:
+      type: object
+      properties:
+        checked: { type: boolean }
+      required: [checked]
+    ChefGuideInput:
+      type: object
+      properties:
+        dish: { type: string, minLength: 1, maxLength: 120 }
+        ingredients:
+          type: array
+          items: { type: string }
+        allergies:
+          type: array
+          items: { type: string }
+      required: [dish, ingredients, allergies]
+    ChefGuide:
+      type: object
+      properties:
+        dish: { type: string }
+        prepMinutes: { type: integer }
+        cookMinutes: { type: integer }
+        servings: { type: integer }
+        steps:
+          type: array
+          items: { type: string }
+        substitutions:
+          type: array
+          items: { type: string }
+        allergyWarnings:
+          type: array
+          items: { type: string }
+        voiceScript: { type: string }
+      required: [dish, prepMinutes, cookMinutes, servings, steps, substitutions, allergyWarnings, voiceScript]
+    RecentActivity:
+      type: object
+      properties:
+        id: { type: string }
+        title: { type: string }
+        subtitle: { type: string }
+        kind: { type: string, enum: [scan, freshness, audit] }
+        createdAt: { type: string, format: date-time }
+        score: { type: integer }
+      required: [id, title, subtitle, kind, createdAt, score]
+    DashboardSummary:
+      type: object
+      properties:
+        calorieTarget: { type: integer }
+        caloriesConsumed: { type: integer }
+        proteinConsumed: { type: number }
+        carbsConsumed: { type: number }
+        fatConsumed: { type: number }
+        healthScore: { type: integer }
+        mealsLogged: { type: integer }
+        mealsPlanned: { type: integer }
+        weeklyCalories:
+          type: array
+          items: { type: integer }
+        recentActivity:
+          type: array
+          items: { $ref: "#/components/schemas/RecentActivity" }
+        nextMeal: { $ref: "#/components/schemas/PlannedMeal" }
+      required: [calorieTarget, caloriesConsumed, proteinConsumed, carbsConsumed, fatConsumed, healthScore, mealsLogged, mealsPlanned, weeklyCalories, recentActivity, nextMeal]
 

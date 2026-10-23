@@ -1,10 +1,11 @@
-# [Project name]
+# Food Verse AI
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+Food Verse AI helps people explore nutrition, estimate freshness, review kitchen practices, cook with guidance, and plan meals around their goals.
 
 ## Run & Operate
 
-- `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000)
+- `pnpm --filter @workspace/food-verse-ai run dev` — run the web app
+- `pnpm --filter @workspace/api-server run dev` — run the FastAPI server through Uvicorn
 - `pnpm run typecheck` — full typecheck across all packages
 - `pnpm run build` — typecheck + build all packages
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
@@ -14,31 +15,42 @@ _Replace the heading above with the project's name, and this line with one sente
 ## Stack
 
 - pnpm workspaces, Node.js 24, TypeScript 5.9
-- API: Express 5
+- Frontend: React, Vite, Tailwind CSS, TanStack Query
+- API: FastAPI, Pydantic, Uvicorn
 - DB: PostgreSQL + Drizzle ORM
-- Validation: Zod (`zod/v4`), `drizzle-zod`
+- Validation: Pydantic on the API, generated Zod schemas for TypeScript
 - API codegen: Orval (from OpenAPI spec)
-- Build: esbuild (CJS bundle)
+- Python environment: uv (`pyproject.toml`, `uv.lock`)
 
 ## Where things live
 
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
+- `artifacts/food-verse-ai` — dashboard and user-facing app
+- `artifacts/api-server/src/main.py` — FastAPI routes, profile, meal plan, and persistence
+- `artifacts/api-server/src/services/analysis.py` — deterministic demo analysis handlers
+- `lib/api-spec/openapi.yaml` — API contract source of truth
+- `lib/db/src/schema/food-verse.ts` — PostgreSQL schema
+- `artifacts/food-verse-ai/src/index.css` — app theme
 
 ## Architecture decisions
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
+- API and generated client share the OpenAPI contract under `/api`.
+- Scan and audit records, profile settings, and weekly plans persist in PostgreSQL.
+- Upload previews stay in the browser; the demo API receives descriptions and filenames, not media bytes.
+- Food, freshness, and hygiene outputs are estimates from deterministic mock handlers, not certified safety assessments.
 
 ## Product
 
-_Describe the high-level user-facing capabilities of this app once they exist._
+The app combines nutrition scans, freshness estimates, kitchen hygiene scorecards, allergy-aware cooking guidance, and personalized weekly meal planning. It includes demo records so the dashboard is populated on first run.
 
 ## User preferences
 
-_Populate as you build — explicit user instructions worth remembering across sessions._
+- Modern food-tech theme with dark/light toggle, emerald/teal, amber accents, and slate-dark surfaces.
 
 ## Gotchas
 
-_Populate as you build — sharp edges, "always run X before Y" rules._
+- Regenerate API client and Zod files after changing `lib/api-spec/openapi.yaml`.
+- Run the database schema push in development after changing `lib/db/src/schema/`.
+- The scan and safety flows are mocked; they do not inspect uploaded media or certify food safety.
 
 ## Pointers
 

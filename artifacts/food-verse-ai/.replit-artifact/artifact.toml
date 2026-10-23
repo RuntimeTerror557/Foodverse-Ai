@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "Food Verse AI"
+description = "A multimodal food intelligence platform for food and nutrition scans, freshness checks, kitchen hygiene audits, guided cooking, and personalized meal planning."
+version = "1.0.0"
+id = "artifacts/food-verse-ai"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 21859
+
+[services.development]
+run = "pnpm --filter @workspace/food-verse-ai run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/food-verse-ai", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/food-verse-ai/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "21859"
+BASE_PATH = "/"

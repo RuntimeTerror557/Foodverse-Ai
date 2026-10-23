@@ -4,9 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "export NODE_ENV=development && pnpm run build && pnpm run start",
-    "build": "node ./build.mjs",
-    "start": "node --enable-source-maps ./dist/index.mjs",
+    "dev": "cd ../.. && uv run --project . uvicorn main:app --app-dir artifacts/api-server/src --host 0.0.0.0 --port ${PORT:-8080} --reload",
+    "build": "cd ../.. && uv run --project . python -m compileall -q artifacts/api-server/src",
+    "start": "cd ../.. && uv run --project . uvicorn main:app --app-dir artifacts/api-server/src --host 0.0.0.0 --port ${PORT:-8080}",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {

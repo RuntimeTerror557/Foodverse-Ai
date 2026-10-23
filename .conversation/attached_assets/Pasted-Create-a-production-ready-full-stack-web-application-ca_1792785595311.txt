@@ -1,0 +1,68 @@
+Create a production-ready, full-stack web application called "Food Verse AI" – a Multimodal Food Intelligence Platform. 
+
+### 🏗️ Tech Stack & Architecture
+- **Frontend:** React.js (Vite), Tailwind CSS, Lucide React icons, Framer Motion for sleek CSS animations, Chart.js or Recharts for data dashboards.
+- **Backend:** FastAPI (Python) web engine handling RESTful APIs, data validation, and modular AI pipeline services.
+- **State & Data Management:** Clean state management, mock database persistent storage setup, and standard json schema response formats.
+
+---
+
+### 💡 Project Overview
+Food Verse AI is an AI-powered multimodal platform designed to analyze food across multiple dimensions—visual appearance, preparation processes, hygiene practices, and individual dietary needs. It integrates vision-based analysis, audio processing, contextual reasoning, and personalized recommendations into a modern, unified dashboard.
+
+---
+
+### 🚀 Core Requirements & Modules
+
+#### 1. Multimodal Input Engine
+- Support multimodal inputs: **Image Upload**, **Video Stream / File**, **Audio Voice Query**, and **Text Input**.
+- Interactive media recorder for voice queries and drag-and-drop file upload zone.
+
+#### 2. Food Recognition & Nutrition Analysis
+- Analyze uploaded food images to automatically identify dish name, ingredients, and confidence score.
+- Provide detailed nutrition breakdown: Calories, Protein, Carbs, Fats, Fiber, and Micronutrients.
+- Calculate a visual **Health Score (0-100)** with interactive breakdown graphs and nutritional recommendations.
+
+#### 3. Food Freshness & Spoilage Detection
+- Analyze visual traits: color shifts, discoloration patterns, surface texture, and mould indicators.
+- Classify freshness status into 3 distinct visual badges:
+  - 🟢 **Fresh**
+  - 🟡 **Moderately Fresh (Consume Soon)**
+  - 🔴 **Spoiled / Unsafe**
+- Provide actionable safety advice and storage recommendations.
+
+#### 4. Restaurant Kitchen Hygiene & Safety Monitoring
+- Video feed analysis interface (live stream simulator or sample video upload).
+- Detect key compliance metrics in real time:
+  - Glove Compliance (%)
+  - Hair-Cap / Hairnet Compliance (%)
+  - Cleanliness Score & Surface Contamination risk
+  - Safe Food Handling Alerts (e.g., cross-contamination hazards)
+- Generate a downloadable/exportable **Hygiene Audit Report & Safety Scorecard**.
+
+#### 5. Smart Cooking Assistance
+- Interactive step-by-step cooking guide generated from identified dishes or user ingredients.
+- Voice/Audio response player for hands-free cooking guidance.
+- Substitutions & Allergy warnings builder based on user context.
+
+#### 6. Personalized Meal Planning & Nutrition Tracking
+- User Profile setup: Calorie targets, dietary goals (Keto, Vegan, Muscle Gain, Low-Carb), and allergies.
+- Adaptive weekly meal planner with personalized dish suggestions, grocery lists, and goal tracking charts.
+
+---
+
+### 🎨 UI/UX & Design Guidelines
+- Modern, clean, dark/light toggle luxury food-tech theme (emerald/teal green, amber accents, slate dark backgrounds).
+- Smooth entry animations using Framer Motion (fade-ins, tab transitions, dynamic progress indicators).
+- Responsive grid dashboard layout with quick navigation tabs:
+  1. 📊 **Overview / Dashboard** (Recent Scans, Daily Nutrition Summary, Quick Insights)
+  2. 🔍 **Food & Freshness Scanner** (Image/Audio Input, Freshness, Nutrition Engine)
+  3. 🛡️ **Hygiene & Safety Audit** (Video Analyzer, Kitchen Compliance)
+  4. 👨‍🍳 **Smart Chef Assistant** (Interactive Step-by-Step Guidance)
+  5. 📅 **Personalized Meal Planner** (Dietary Goals, Weekly Schedule, Progress Analytics)
+
+---
+
+### 🛠️ Mock AI & Backend Integration Setup
+- Include well-structured Python FastAPI routes (`/api/v1/scan-food`, `/api/v1/detect-freshness`, `/api/v1/analyze-hygiene`, `/api/v1/meal-plan`) with fallback mock multimodal handlers so the application runs seamlessly out-of-the-box.
+- Pre-populate rich sample data for quick demoing (e.g., sample dish scans, kitchen hygiene clips, daily meal logs).
