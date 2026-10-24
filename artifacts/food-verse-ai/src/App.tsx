@@ -7,7 +7,7 @@ import NotFound from '@/pages/not-found';
 import { Route, Switch, useLocation, Router as WouterRouter, Link } from 'wouter';
 import {
   Activity, AlertTriangle, Apple, ArrowDownRight, ArrowRight, ArrowUpRight,
-  AudioLines, Bell, ChefHat, Check, CheckCircle2, ChevronDown, CircleHelp,
+  AudioLines, ChefHat, Check, CheckCircle2, ChevronDown, CircleHelp,
   Clock3, CloudUpload, CookingPot, Download, Droplets, Flame, Gauge,
   HeartPulse, Home, Leaf, ListChecks, Menu, Moon, MoreHorizontal, Play,
   Plus, ScanLine, Search, ShieldCheck, ShoppingBasket, Sparkles, Sun,
@@ -98,7 +98,6 @@ function AppShell({ children }: { children: ReactNode }) {
         <div className="top-actions">
           <span className="today-label">{new Intl.DateTimeFormat('en', { weekday: 'long', month: 'short', day: 'numeric' }).format(new Date())}</span>
           <button className="icon-button theme-toggle" title={`Switch to ${dark ? 'light' : 'dark'} mode`} aria-label="Toggle dark mode" data-testid="button-theme-toggle" onClick={toggleTheme}>{dark ? <Sun size={18} /> : <Moon size={18} />}</button>
-          <button className="icon-button notification-button" aria-label="Notifications" data-testid="button-notifications"><Bell size={18} /><i /></button>
           <Link href="/profile" className="top-avatar" aria-label="Profile" data-testid="link-profile-avatar">M</Link>
         </div>
       </header>
@@ -142,7 +141,7 @@ function Dashboard() {
     </section>
     <section className="dashboard-lower">
       <div className="panel nutrition-panel">
-        <div className="panel-heading"><div><div className="eyebrow">DAILY RHYTHM</div><h3>Calories in context</h3></div><button className="quiet-button" data-testid="button-weekly-view">This week <ChevronDown size={14} /></button></div>
+        <div className="panel-heading"><div><div className="eyebrow">DAILY RHYTHM</div><h3>Calories in context</h3></div><span className="quiet-button">This week</span></div>
         <div className="calorie-number"><strong>{data.caloriesConsumed.toLocaleString()}</strong><span> / {data.calorieTarget.toLocaleString()} kcal</span><span className="trend-up"><ArrowUpRight size={14} /> on track</span></div>
         <div className="calorie-track"><span style={{ width: `${pct}%` }} /></div>
         <div className="chart-area"><div className="chart-y"><span>2,000</span><span>1,000</span><span>0</span></div><div className="bar-chart">{(data.weeklyCalories ?? []).map((n, i) => <div className="bar-column" key={`day-${i}`}><div className={`chart-bar ${i === Math.min(new Date().getDay(), 6) ? 'bar-today' : ''}`} style={{ height: `${Math.max(n / Math.max(data.calorieTarget, 1) * 100, 7)}%` }} title={`${n} kcal`} /><small>{['M', 'T', 'W', 'T', 'F', 'S', 'S'][i]}</small></div>)}</div></div>
@@ -162,7 +161,7 @@ function Dashboard() {
   </>;
 }
 function ScanRow({ scan }: { scan: FoodScan }) {
-  return <div className="scan-row" data-testid={`row-scan-${scan.id}`}><div className="scan-thumb"><Apple size={19} /></div><div className="scan-detail"><strong>{scan.dishName}</strong><span>{new Date(scan.createdAt).toLocaleDateString('en', { month: 'short', day: 'numeric' })} <i>·</i> {scan.ingredients.slice(0, 3).join(', ')}</span></div><div className="scan-kcal"><strong>{scan.nutrition.calories}</strong><span>kcal</span></div><span className={`freshness-pill ${scan.freshness.status}`}>{scan.freshness.label}</span><span className="health-score">{scan.healthScore}<small> health</small></span><button className="icon-button small-icon" aria-label={`More about ${scan.dishName}`} data-testid={`button-scan-details-${scan.id}`}><MoreHorizontal size={18} /></button></div>;
+  return <div className="scan-row" data-testid={`row-scan-${scan.id}`}><div className="scan-thumb"><Apple size={19} /></div><div className="scan-detail"><strong>{scan.dishName}</strong><span>{new Date(scan.createdAt).toLocaleDateString('en', { month: 'short', day: 'numeric' })} <i>·</i> {scan.ingredients.slice(0, 3).join(', ')}</span></div><div className="scan-kcal"><strong>{scan.nutrition.calories}</strong><span>kcal</span></div><span className={`freshness-pill ${scan.freshness.status}`}>{scan.freshness.label}</span><span className="health-score">{scan.healthScore}<small> health</small></span></div>;
 }
 function EmptyState({ icon: Icon, title, text, link, linkText }: { icon: typeof ScanLine; title: string; text: string; link: string; linkText: string }) {
   return <div className="empty-state"><span><Icon size={22} /></span><h3>{title}</h3><p>{text}</p><Link className="button button-outline" href={link} data-testid={`link-empty-${link.slice(1) || 'home'}`}>{linkText} <ArrowRight size={15} /></Link></div>;
@@ -211,7 +210,12 @@ function ScannerPage() {
     setSource('audio');
     setMediaError('');
     setListening(true);
-    recognition.start();
+    try {
+      recognition.start();
+    } catch {
+      setListening(false);
+      setMediaError('Voice capture could not start. You can upload audio or type your question.');
+    }
   };
   const stopVoiceQuery = () => { recognitionRef.current?.stop(); setListening(false); };
   const runScan = () => scanMutation.mutate({ data: { source, fileName: fileName || null, description } }, { onSuccess: (scan) => { setSelected(scan); void queryClient.invalidateQueries({ queryKey: getListScansQueryKey() }); void queryClient.invalidateQueries({ queryKey: getGetDashboardQueryKey() }); } });
@@ -274,22 +278,22 @@ function HygienePage() {
   const run = (mode: 'sample' | 'upload') => mutation.mutate({ data: { kitchenName: kitchen, videoName: fileName || null, mode } }, { onSuccess: (result) => { setAudit(result); void qc.invalidateQueries({ queryKey: getListAuditsQueryKey() }); } });
   const download = () => {
     if (!audit) return;
-    const text = `Food Verse AI — Kitchen hygiene estimate\n${audit.kitchenName}\nSafety score: ${audit.safetyScore}/100\nCleanliness: ${audit.cleanlinessScore}/100\nGlove compliance: ${audit.gloveCompliance}%\nHairnet compliance: ${audit.hairnetCompliance}%\nContamination risk: ${audit.contaminationRisk}\n\nAlerts:\n${audit.alerts.map(a => `• ${a}`).join('\n')}\n\nThis is an AI-generated estimate, not a real safety certification.`;
+    const text = `Food Verse AI — simulated kitchen hygiene estimate\n${audit.kitchenName}\nSafety score: ${audit.safetyScore}/100\nCleanliness: ${audit.cleanlinessScore}/100\nGlove compliance: ${audit.gloveCompliance}%\nHairnet compliance: ${audit.hairnetCompliance}%\nContamination risk: ${audit.contaminationRisk}\n\nObservations:\n${audit.alerts.map(a => `• ${a}`).join('\n')}\n\nDemo scorecard; uploaded video was not analyzed. Not a real safety certification.`;
     const blob = new Blob([text], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
-    const anchor = document.createElement('a'); anchor.href = url; anchor.download = 'food-verse-kitchen-scorecard.txt'; anchor.click(); URL.revokeObjectURL(url);
+    const anchor = document.createElement('a'); anchor.href = url; anchor.download = 'food-verse-kitchen-scorecard.txt'; anchor.click(); window.setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
   return <>
-    <PageHeading eyebrow="A SAFER SPACE TO COOK" title="Care starts in the kitchen." description="A video-based kitchen hygiene review to help spot habits worth a second look." action={<span className="estimate-badge"><CircleHelp size={14} /> Estimate only</span>} />
+    <PageHeading eyebrow="A SAFER SPACE TO COOK" title="Care starts in the kitchen." description="A simulated kitchen review to help you reflect on routines worth a second look." action={<span className="estimate-badge"><CircleHelp size={14} /> Demo estimate</span>} />
     <div className="hygiene-grid">
-      <div className="panel audit-start"><div className="audit-symbol"><ShieldCheck size={24} /></div><span className="eyebrow">KITCHEN VIDEO AUDIT</span><h2>Small routines.<br /><em>Safer meals.</em></h2><p>Review common hygiene cues like hand protection, hair coverage, and surface cleanliness.</p>
+      <div className="panel audit-start"><div className="audit-symbol"><ShieldCheck size={24} /></div><span className="eyebrow">KITCHEN HYGIENE DEMO</span><h2>Small routines.<br /><em>Safer meals.</em></h2><p>Try a sample scorecard for common hygiene cues. Uploaded videos stay on your device and are not analyzed.</p>
         <label className="field-label" htmlFor="kitchen-name">Kitchen name</label><input id="kitchen-name" className="text-input" value={kitchen} onChange={e => setKitchen(e.target.value)} maxLength={120} data-testid="input-kitchen-name" />
-        <label className="field-label">Add a short kitchen video <span>(optional)</span></label><label className="video-upload" htmlFor="kitchen-video"><Video size={19} /><span>{fileName || 'Choose a video to review'}</span><input id="kitchen-video" type="file" accept="video/*" onChange={e => setFileName(e.target.files?.[0]?.name ?? '')} data-testid="input-kitchen-video" /><Plus size={16} /></label>
-        <button className="button button-primary full-button" disabled={!kitchen.trim() || mutation.isPending} onClick={() => run(fileName ? 'upload' : 'sample')} data-testid="button-run-audit"><ShieldCheck size={17} />{mutation.isPending ? 'Reviewing kitchen…' : fileName ? 'Review video' : 'Run sample review'}<ArrowRight size={15} /></button>{mutation.isError && <div className="inline-error" role="alert">We couldn’t create this review. Try again.</div>}
-        <p className="estimate-note"><CircleHelp size={14} /> AI-generated guidance is an estimate—not a food-safety certification.</p>
+        <label className="field-label">Select a short kitchen video <span>(optional, local only)</span></label><label className="video-upload" htmlFor="kitchen-video"><Video size={19} /><span>{fileName || 'Choose a video (not uploaded)'}</span><input id="kitchen-video" type="file" accept="video/*" onChange={e => setFileName(e.target.files?.[0]?.name ?? '')} data-testid="input-kitchen-video" /><Plus size={16} /></label>
+        <button className="button button-primary full-button" disabled={!kitchen.trim() || mutation.isPending} onClick={() => run(fileName ? 'upload' : 'sample')} data-testid="button-run-audit"><ShieldCheck size={17} />{mutation.isPending ? 'Preparing scorecard…' : fileName ? 'Create demo scorecard' : 'Run sample review'}<ArrowRight size={15} /></button>{mutation.isError && <div className="inline-error" role="alert">We couldn’t create this review. Try again.</div>}
+        <p className="estimate-note"><CircleHelp size={14} /> Demo scores do not come from the video and are not a food-safety certification.</p>
       </div>
       <div className="panel audit-overview">
-        {audit ? <><div className="panel-heading"><div><div className="eyebrow">YOUR LATEST ESTIMATE</div><h3>{audit.kitchenName}</h3></div><span className="audit-score">{audit.safetyScore}<small>/100</small></span></div><div className="audit-scorebar"><span style={{ width: `${audit.safetyScore}%` }} /></div><div className="audit-metrics"><div><span>Surface cleanliness</span><strong>{audit.cleanlinessScore}<small>%</small></strong></div><div><span>Glove compliance</span><strong>{audit.gloveCompliance}<small>%</small></strong></div><div><span>Hair coverage</span><strong>{audit.hairnetCompliance}<small>%</small></strong></div></div><div className={`risk-band risk-${audit.contaminationRisk}`}><AlertTriangle size={16} /><span><strong>{pretty(audit.contaminationRisk)} contamination risk</strong><small>Based on visible hygiene indicators</small></span></div><div className="alerts-list"><span className="mini-heading">OBSERVATIONS</span>{audit.alerts.length ? audit.alerts.map((alert, i) => <div key={`${i}-${alert}`}><span>{String(i + 1).padStart(2, '0')}</span>{alert}</div>) : <p>No observations were noted in this review.</p>}</div><button className="button button-outline full-button" onClick={download} data-testid="button-download-scorecard"><Download size={16} /> Download scorecard</button></> : <div className="audit-empty"><div className="audit-orbit"><div><ShieldCheck size={28} /></div><span /><span /><span /></div><h3>Your kitchen snapshot</h3><p>Run your first review to see a scorecard of visible hygiene indicators and practical observations.</p><div className="audit-check-list"><span><CheckCircle2 size={15} /> Food handling cues</span><span><CheckCircle2 size={15} /> Surface cleanliness</span><span><CheckCircle2 size={15} /> Practical observations</span></div></div>}
+        {audit ? <><div className="panel-heading"><div><div className="eyebrow">YOUR LATEST ESTIMATE</div><h3>{audit.kitchenName}</h3></div><span className="audit-score">{audit.safetyScore}<small>/100</small></span></div><div className="audit-scorebar"><span style={{ width: `${audit.safetyScore}%` }} /></div><div className="audit-metrics"><div><span>Surface cleanliness</span><strong>{audit.cleanlinessScore}<small>%</small></strong></div><div><span>Glove compliance</span><strong>{audit.gloveCompliance}<small>%</small></strong></div><div><span>Hair coverage</span><strong>{audit.hairnetCompliance}<small>%</small></strong></div></div><div className={`risk-band risk-${audit.contaminationRisk}`}><AlertTriangle size={16} /><span><strong>{pretty(audit.contaminationRisk)} demo risk</strong><small>Illustrative values; video was not analyzed</small></span></div><div className="alerts-list"><span className="mini-heading">SAMPLE OBSERVATIONS</span>{audit.alerts.length ? audit.alerts.map((alert, i) => <div key={`${i}-${alert}`}><span>{String(i + 1).padStart(2, '0')}</span>{alert}</div>) : <p>No observations were noted in this review.</p>}</div><button className="button button-outline full-button" onClick={download} data-testid="button-download-scorecard"><Download size={16} /> Download scorecard</button></> : <div className="audit-empty"><div className="audit-orbit"><div><ShieldCheck size={28} /></div><span /><span /><span /></div><h3>Your kitchen snapshot</h3><p>Run a sample review to see an illustrative scorecard and example observations. Video is not analyzed.</p><div className="audit-check-list"><span><CheckCircle2 size={15} /> Food handling cues</span><span><CheckCircle2 size={15} /> Surface cleanliness</span><span><CheckCircle2 size={15} /> Practical observations</span></div></div>}
       </div>
     </div>
     <section className="recent-section"><div className="section-row"><div><div className="eyebrow">PAST REVIEWS</div><h2 className="section-title">Kitchen history</h2></div></div>{audits.isLoading ? <div className="skeleton skeleton-row" /> : audits.isError ? <ErrorNotice retry={() => void audits.refetch()} /> : audits.data?.length ? <div className="audit-history">{audits.data.map(item => <div key={item.id} className="history-row" data-testid={`row-audit-${item.id}`}><div className="history-icon"><ShieldCheck size={17} /></div><div><strong>{item.kitchenName}</strong><span>{new Date(item.createdAt).toLocaleDateString()} · {pretty(item.contaminationRisk)} risk</span></div><b>{item.safetyScore}<small>/100</small></b></div>)}</div> : <EmptyState icon={ShieldCheck} title="No kitchen reviews yet" text="When you run a review, your estimate history will be kept here." link="/hygiene" linkText="Start a review" />}</section>

@@ -10,7 +10,7 @@ Food Verse AI helps people explore nutrition, estimate freshness, review kitchen
 - `pnpm run build` — typecheck + build all packages
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
 - `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-- Required env: `DATABASE_URL` — Postgres connection string
+- Required env: `DATABASE_URL` — Postgres connection string; `SESSION_SECRET` — signs browser session cookies
 
 ## Stack
 
@@ -35,12 +35,13 @@ Food Verse AI helps people explore nutrition, estimate freshness, review kitchen
 
 - API and generated client share the OpenAPI contract under `/api`.
 - Scan and audit records, profile settings, and weekly plans persist in PostgreSQL.
+- A signed, HTTP-only browser session keeps anonymous visitors' saved data separate; there is no account sign-in or cross-device sync.
 - Upload previews stay in the browser; the demo API receives descriptions and filenames, not media bytes.
 - Food, freshness, and hygiene outputs are estimates from deterministic mock handlers, not certified safety assessments.
 
 ## Product
 
-The app combines nutrition scans, freshness estimates, kitchen hygiene scorecards, allergy-aware cooking guidance, and personalized weekly meal planning. It includes demo records so the dashboard is populated on first run.
+The app combines nutrition scans, freshness estimates, kitchen hygiene scorecards, allergy-aware cooking guidance, and personalized weekly meal planning. Each browser session receives its own demo records on first use.
 
 ## User preferences
 

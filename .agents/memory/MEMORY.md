@@ -1,0 +1,1 @@
+- [Food Verse planner storage](food-verse-planner-storage.md) — Keep per-session plans separate; replacing the legacy plan table’s key risks existing data.

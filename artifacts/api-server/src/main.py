@@ -496,7 +496,7 @@ def seed_session_data(owner_id: str) -> None:
         )
         connection.execute(
             """
-            INSERT INTO meal_plans (owner_id, week_of, payload, updated_at)
+            INSERT INTO user_meal_plans (owner_id, week_of, payload, updated_at)
             VALUES (%s, %s, %s, %s)
             ON CONFLICT (owner_id, week_of) DO NOTHING
             """,
@@ -586,7 +586,7 @@ def plan_from_db(
 ) -> dict[str, Any]:
     start = week_start or monday_of(local_today())
     row = connection.execute(
-        "SELECT payload FROM meal_plans WHERE owner_id = %s AND week_of = %s",
+        "SELECT payload FROM user_meal_plans WHERE owner_id = %s AND week_of = %s",
         (owner_id, start.isoformat()),
     ).fetchone()
     if row:
@@ -595,7 +595,7 @@ def plan_from_db(
     plan = plan_for_week(start, profile)
     connection.execute(
         """
-        INSERT INTO meal_plans (owner_id, week_of, payload, updated_at)
+        INSERT INTO user_meal_plans (owner_id, week_of, payload, updated_at)
         VALUES (%s, %s, %s, %s)
         ON CONFLICT (owner_id, week_of) DO NOTHING
         """,
@@ -799,30 +799,35 @@ def get_meal_plan(request: Request) -> dict[str, Any]:
 
 
 @router.post("/v1/meal-plan", response_model=MealPlan, status_code=201)
-def generate_meal_plan(body: MealPlanInput) -> dict[str, Any]:
+def generate_meal_plan(body: MealPlanInput, request: Request) -> dict[str, Any]:
+    owner_id = request.state.owner_id
+    ensure_session_seeded(owner_id)
     start = monday_of(body.weekOf or local_today())
     with db_connect() as connection:
-        profile = profile_from_db(connection)
+        profile = profile_from_db(connection, owner_id)
         plan = plan_for_week(start, profile)
         connection.execute(
             """
-            INSERT INTO meal_plans (week_of, payload, updated_at)
-            VALUES (%s, %s, %s)
-            ON CONFLICT (week_of)
+            INSERT INTO user_meal_plans (owner_id, week_of, payload, updated_at)
+            VALUES (%s, %s, %s, %s)
+            ON CONFLICT (owner_id, week_of)
             DO UPDATE SET payload = EXCLUDED.payload, updated_at = EXCLUDED.updated_at
             """,
-            (start.isoformat(), Jsonb(plan), datetime.now(timezone.utc)),
+            (owner_id, start.isoformat(), Jsonb(plan), datetime.now(timezone.utc)),
         )
         return plan
 
 
 @router.patch("/v1/meals/{meal_id}", response_model=PlannedMeal)
 def update_meal_completion(
-    meal_id: str, body: MealCompletionInput
+    meal_id: str, body: MealCompletionInput, request: Request
 ) -> dict[str, Any]:
+    owner_id = request.state.owner_id
+    ensure_session_seeded(owner_id)
     with db_connect() as connection:
         rows = connection.execute(
-            "SELECT week_of, payload FROM meal_plans ORDER BY week_of DESC FOR UPDATE"
+            "SELECT week_of, payload FROM user_meal_plans WHERE owner_id = %s ORDER BY week_of DESC FOR UPDATE",
+            (owner_id,),
         ).fetchall()
         for row in rows:
             plan = row["payload"]
@@ -832,12 +837,13 @@ def update_meal_completion(
                         meal["completed"] = body.completed
                         connection.execute(
                             """
-                            UPDATE meal_plans SET payload = %s, updated_at = %s
-                            WHERE week_of = %s
+                            UPDATE user_meal_plans SET payload = %s, updated_at = %s
+                            WHERE owner_id = %s AND week_of = %s
                             """,
                             (
                                 Jsonb(plan),
                                 datetime.now(timezone.utc),
+                                owner_id,
                                 row["week_of"],
                             ),
                         )
@@ -847,11 +853,14 @@ def update_meal_completion(
 
 @router.patch("/v1/grocery-list/{item_id}", response_model=GroceryItem)
 def update_grocery_item(
-    item_id: str, body: GroceryItemInput
+    item_id: str, body: GroceryItemInput, request: Request
 ) -> dict[str, Any]:
+    owner_id = request.state.owner_id
+    ensure_session_seeded(owner_id)
     with db_connect() as connection:
         rows = connection.execute(
-            "SELECT week_of, payload FROM meal_plans ORDER BY week_of DESC FOR UPDATE"
+            "SELECT week_of, payload FROM user_meal_plans WHERE owner_id = %s ORDER BY week_of DESC FOR UPDATE",
+            (owner_id,),
         ).fetchall()
         for row in rows:
             plan = row["payload"]
@@ -860,12 +869,13 @@ def update_grocery_item(
                     item["checked"] = body.checked
                     connection.execute(
                         """
-                        UPDATE meal_plans SET payload = %s, updated_at = %s
-                        WHERE week_of = %s
+                        UPDATE user_meal_plans SET payload = %s, updated_at = %s
+                        WHERE owner_id = %s AND week_of = %s
                         """,
                         (
                             Jsonb(plan),
                             datetime.now(timezone.utc),
+                            owner_id,
                             row["week_of"],
                         ),
                     )

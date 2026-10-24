@@ -29,8 +29,14 @@ export const nutritionProfilesTable = pgTable("nutrition_profiles", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
 });
 
-export const mealPlansTable = pgTable(
-  "meal_plans",
+export const mealPlansTable = pgTable("meal_plans", {
+  weekOf: date("week_of", { mode: "string" }).primaryKey(),
+  payload: jsonb("payload").notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
+});
+
+export const userMealPlansTable = pgTable(
+  "user_meal_plans",
   {
     ownerId: text("owner_id").notNull().default("demo"),
     weekOf: date("week_of", { mode: "string" }).notNull(),
