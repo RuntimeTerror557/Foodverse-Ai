@@ -5,6 +5,7 @@ import hmac
 import logging
 import os
 import secrets
+import time
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta, timezone
 from typing import Any, Literal
@@ -17,12 +18,15 @@ from pydantic import BaseModel, Field
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
+from services import food_ai
 from services.analysis import (
     analyze_food,
     analyze_hygiene,
     estimate_freshness,
     make_chef_guide,
 )
+from services.llm import AIError, ai_settings, get_llm
+from services.nutrition_db import get_nutrition_lookup
 
 logger = logging.getLogger("food-verse.api")
 LOCAL_ZONE = ZoneInfo("Asia/Kolkata")
@@ -74,6 +78,8 @@ class FoodScan(BaseModel):
     healthScore: int
     healthBreakdown: list[HealthScoreSignal]
     freshness: FreshnessResult
+    # Present for scans produced by the AI pipeline (items, diet labels, caveats, ...).
+    analysis: dict[str, Any] | None = None
 
 
 class FoodScanInput(BaseModel):
@@ -200,6 +206,64 @@ class DashboardSummary(BaseModel):
     weeklyCalories: list[int]
     recentActivity: list[RecentActivity]
     nextMeal: PlannedMeal
+
+
+class ImagePayload(BaseModel):
+    data: str = Field(max_length=8_000_000, description="Base64 image bytes or a data: URL")
+    mimeType: str | None = Field(default=None, max_length=60)
+    timestamp: float | None = Field(default=None, ge=0, le=36000, description="Video time in seconds (frames only)")
+
+
+class AnalyzeMediaInput(BaseModel):
+    kind: Literal["image", "video", "text", "audio"]
+    images: list[ImagePayload] = Field(default_factory=list, max_length=8)
+    description: str = Field(default="", max_length=1000)
+    fileName: str | None = Field(default=None, max_length=200)
+    dietConvention: str = Field(default="none", max_length=30)
+    goal: str | None = Field(default=None, max_length=120)
+    allergies: list[str] = Field(default_factory=list, max_length=20)
+
+
+class FoodInfoInput(BaseModel):
+    query: str = Field(min_length=1, max_length=400)
+    dietConvention: str = Field(default="none", max_length=30)
+    allergies: list[str] = Field(default_factory=list, max_length=20)
+    ingredientList: list[str] = Field(default_factory=list, max_length=40)
+
+
+class IdentifyIngredientsInput(BaseModel):
+    images: list[ImagePayload] = Field(default_factory=list, max_length=4)
+    note: str = Field(default="", max_length=300)
+
+
+class RecipePreferences(BaseModel):
+    cuisine: str | None = Field(default=None, max_length=60)
+    spiceLevel: Literal["mild", "medium", "hot"] | None = None
+    maxMinutes: int | None = Field(default=None, ge=5, le=480)
+    difficulty: Literal["easy", "medium", "hard"] | None = None
+    servings: int | None = Field(default=None, ge=1, le=20)
+    equipment: list[str] = Field(default_factory=list, max_length=15)
+    variation: str | None = Field(default=None, max_length=60)
+
+
+class RecipeRequestInput(BaseModel):
+    ingredients: list[str] = Field(default_factory=list, max_length=60)
+    dish: str = Field(default="", max_length=120)
+    dietConvention: str = Field(default="none", max_length=30)
+    allergies: list[str] = Field(default_factory=list, max_length=20)
+    excludeIngredients: list[str] = Field(default_factory=list, max_length=30)
+    preferences: RecipePreferences = Field(default_factory=RecipePreferences)
+    previousRecipe: dict[str, Any] | None = None
+    followUp: str = Field(default="", max_length=300)
+    assumePantryStaples: bool = True
+
+
+class SuggestionsInput(BaseModel):
+    goal: str = Field(default="", max_length=120)
+    dietConvention: str = Field(default="none", max_length=30)
+    allergies: list[str] = Field(default_factory=list, max_length=20)
+    ingredients: list[str] = Field(default_factory=list, max_length=40)
+    context: str = Field(default="", max_length=300)
 
 
 def db_connect() -> psycopg.Connection[Any]:
@@ -512,7 +576,7 @@ async def lifespan(_: FastAPI):
 app = FastAPI(
     title="Food Verse AI API",
     version="1.0.0",
-    description="Food and nutrition demo analysis API. Scan and safety results are estimates, not professional certification.",
+    description="Food and nutrition API with AI-powered food lookup, photo/video analysis and recipe generation. Results are estimates, not professional certification.",
     docs_url="/api/docs",
     openapi_url="/api/openapi.json",
     redoc_url="/api/redoc",
@@ -886,6 +950,128 @@ def update_grocery_item(
 @router.post("/v1/chef-guide", response_model=ChefGuide)
 def create_chef_guide(body: ChefGuideInput) -> dict[str, Any]:
     return make_chef_guide(body.dish, body.ingredients, body.allergies)
+
+
+# --------------------------------------------------------------------------
+# AI features. Keys stay on the server; every call is validated and guarded in
+# services/food_ai.py. Failures are reported as {"detail": {"code", "message"}}.
+# --------------------------------------------------------------------------
+_AI_CALLS: dict[str, list[float]] = {}
+AI_RATE_LIMIT = int(os.environ.get("FOODVERSE_AI_RATE_LIMIT", "30"))
+AI_RATE_WINDOW_SECONDS = 600
+
+
+def ai_http_error(error: AIError) -> HTTPException:
+    headers = {"Retry-After": str(error.retry_after)} if error.retry_after else None
+    return HTTPException(status_code=error.http_status, detail=error.as_detail(), headers=headers)
+
+
+def check_ai_rate_limit(owner_id: str) -> None:
+    now = time.monotonic()
+    recent = [stamp for stamp in _AI_CALLS.get(owner_id, []) if now - stamp < AI_RATE_WINDOW_SECONDS]
+    if len(recent) >= AI_RATE_LIMIT:
+        wait = int(AI_RATE_WINDOW_SECONDS - (now - recent[0])) + 1
+        raise ai_http_error(AIError("rate_limited", "You've reached the AI request limit for now. Please try again in a few minutes.", retry_after=wait))
+    recent.append(now)
+    _AI_CALLS[owner_id] = recent
+
+
+def merged_allergies(owner_id: str, extra: list[str]) -> list[str]:
+    """Saved profile allergies plus any sent with the request (deduplicated)."""
+    with db_connect() as connection:
+        saved = profile_from_db(connection, owner_id).get("allergies", [])
+    merged: list[str] = []
+    for item in [*saved, *extra]:
+        cleaned = " ".join(str(item).split())
+        if cleaned and cleaned.lower() not in (m.lower() for m in merged):
+            merged.append(cleaned)
+    return merged
+
+
+def run_ai(request: Request, work):
+    """Common wrapper: rate limit, build the model client, translate AIError."""
+    owner_id = request.state.owner_id
+    ensure_session_seeded(owner_id)
+    try:
+        llm = get_llm()
+        check_ai_rate_limit(owner_id)
+        return work(llm, owner_id)
+    except AIError as error:
+        raise ai_http_error(error) from error
+
+
+@router.get("/v1/ai/status")
+def ai_status() -> dict[str, Any]:
+    return {
+        **ai_settings(),
+        "limits": {"maxImages": 4, "maxVideoFrames": 8, "maxImageBytes": 5 * 1024 * 1024},
+    }
+
+
+@router.post("/v1/ai/food-info")
+def ai_food_info(body: FoodInfoInput, request: Request) -> dict[str, Any]:
+    def work(llm, owner_id):
+        return food_ai.search_food(
+            llm, body.query, diet=body.dietConvention,
+            allergies=merged_allergies(owner_id, body.allergies),
+            ingredient_list=body.ingredientList, nutrition_lookup=get_nutrition_lookup(),
+        )
+    return run_ai(request, work)
+
+
+@router.post("/v1/ai/analyze-media", response_model=FoodScan, status_code=201)
+def ai_analyze_media(body: AnalyzeMediaInput, request: Request) -> dict[str, Any]:
+    def work(llm, owner_id):
+        with db_connect() as connection:
+            profile = profile_from_db(connection, owner_id)
+        goal = body.goal or (profile.get("goal") if profile.get("goal") != "balanced" else None)
+        scan = food_ai.analyze_media(
+            llm, body.kind, images=[image.model_dump() for image in body.images],
+            description=body.description, diet=body.dietConvention,
+            allergies=merged_allergies(owner_id, body.allergies), goal=goal, file_name=body.fileName,
+        )
+        with db_connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO food_scans (id, owner_id, dish_name, created_at, payload)
+                VALUES (%s, %s, %s, %s, %s)
+                """,
+                (scan["id"], owner_id, scan["dishName"], scan["createdAt"], Jsonb(scan)),
+            )
+        return scan
+    return run_ai(request, work)
+
+
+@router.post("/v1/ai/identify-ingredients")
+def ai_identify_ingredients(body: IdentifyIngredientsInput, request: Request) -> dict[str, Any]:
+    return run_ai(request, lambda llm, _owner: food_ai.identify_ingredients(
+        llm, images=[image.model_dump() for image in body.images], note=body.note))
+
+
+@router.post("/v1/ai/recipes")
+def ai_recipes(body: RecipeRequestInput, request: Request) -> dict[str, Any]:
+    def work(llm, owner_id):
+        return food_ai.generate_recipes(
+            llm, ingredients=body.ingredients, dish=body.dish, diet=body.dietConvention,
+            allergies=merged_allergies(owner_id, body.allergies), exclude=body.excludeIngredients,
+            preferences=body.preferences.model_dump(), previous_recipe=body.previousRecipe,
+            follow_up=body.followUp, assume_pantry_staples=body.assumePantryStaples,
+        )
+    return run_ai(request, work)
+
+
+@router.post("/v1/ai/suggestions")
+def ai_suggestions(body: SuggestionsInput, request: Request) -> dict[str, Any]:
+    def work(llm, owner_id):
+        with db_connect() as connection:
+            profile = profile_from_db(connection, owner_id)
+        goal = body.goal or str(profile.get("goal", "")).replace("_", " ")
+        return food_ai.suggest_foods(
+            llm, goal=goal, diet=body.dietConvention,
+            allergies=merged_allergies(owner_id, body.allergies),
+            ingredients=body.ingredients, context=body.context,
+        )
+    return run_ai(request, work)
 
 
 app.include_router(router)

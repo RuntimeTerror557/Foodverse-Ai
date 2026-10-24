@@ -742,3 +742,64 @@ textarea::placeholder,.text-input::placeholder,input::placeholder {color:hsl(var
   .scanner-tabs button svg { width:13px;height:13px; }
   .signal-heading { align-items:flex-start;flex-direction:column; }
 }
+
+/* ---- AI panels (food lookup, analysis details, Chef AI recipes) ---- */
+.ai-notice { display:flex;gap:9px;align-items:flex-start;background:hsl(var(--primary) / .07);border:1px solid hsl(var(--primary) / .2);color:hsl(var(--foreground));padding:10px 12px;border-radius:9px;font-size:9px;line-height:1.55;margin:12px 0; }
+.ai-notice svg { flex-shrink:0;margin-top:1px;color:hsl(var(--primary)); }
+.ai-notice code { font-size:8px;background:hsl(var(--muted));padding:1px 4px;border-radius:4px; }
+.ai-select { appearance:auto;min-height:38px;padding-block:7px; }
+.ai-grid { display:grid;grid-template-columns:1fr 1fr;gap:0 12px; }
+.ai-grid .field-label { margin-top:13px; }
+.ai-diet { display:inline-flex;align-items:center;font-size:8px;font-weight:700;padding:3px 8px;border-radius:99px;border:1px solid transparent; }
+.ai-diet small { font-weight:500;opacity:.8; }
+.ai-diet-vegan,.ai-diet-vegetarian { background:#e4eee4;color:#3f7249;border-color:#c9dcc9; }
+.ai-diet-eggetarian { background:#f7eee0;color:#916732;border-color:#ecd9b8; }
+.ai-diet-non_vegetarian { background:#f5e3df;color:#a44f43;border-color:#e8c5be; }
+.ai-diet-uncertain { background:hsl(var(--muted));color:hsl(var(--muted-foreground));border-color:hsl(var(--border)); }
+.dark .ai-diet-vegan,.dark .ai-diet-vegetarian { background:#26382a;color:#9fd1a8;border-color:#35503b; }
+.dark .ai-diet-eggetarian { background:#443827;color:#e0bd75;border-color:#5a4a30; }
+.dark .ai-diet-non_vegetarian { background:#432a26;color:#e6a398;border-color:#5c3731; }
+.ai-fit { display:inline-flex;align-items:center;gap:4px;font-size:8px;font-weight:600; }
+.ai-fit-yes { color:#3f7249; } .ai-fit-no { color:#a44f43; } .ai-fit-unknown { color:hsl(var(--muted-foreground)); }
+.ai-analysis { display:flex;flex-direction:column;gap:4px;padding-top:6px; }
+.ai-summary,.ai-answer { font:500 12px/1.6 var(--app-font-serif);margin:12px 0 4px; }
+.ai-block { display:flex;flex-direction:column;gap:7px;padding:12px 0;border-top:1px solid hsl(var(--border)); }
+.ai-item,.ai-food { border:1px solid hsl(var(--border));border-radius:10px;padding:11px 12px;display:flex;flex-direction:column;gap:7px;background:hsl(var(--card)); }
+.ai-food h3 { font:700 15px var(--app-font-serif);margin:0; }
+.ai-item-head { display:flex;justify-content:space-between;align-items:baseline;gap:10px; }
+.ai-item-head strong { font-size:11px; }
+.ai-conf,.ai-portion { font-size:8px;color:hsl(var(--muted-foreground)); }
+.ai-item-meta { display:flex;flex-wrap:wrap;gap:8px;align-items:center; }
+.ai-fine { font-size:8.5px;line-height:1.6;color:hsl(var(--muted-foreground));margin:0; }
+.ai-body { font-size:10px;line-height:1.65;margin:0; }
+.ai-ingredients span { font-size:8px; }
+.ai-ingredients .ai-inferred { opacity:.7;font-style:italic; }
+.ai-list,.ai-steps { font-size:9px;line-height:1.7;margin:0;padding-left:17px;color:hsl(var(--muted-foreground)); }
+.ai-steps b { color:hsl(var(--foreground));font-variant-numeric:tabular-nums; }
+.ai-alert { margin-top:0; }
+.ai-caveats { display:flex;gap:8px;align-items:flex-start;border-top:1px solid hsl(var(--border));padding-top:12px;color:hsl(var(--muted-foreground)); }
+.ai-caveats svg { flex-shrink:0;margin-top:2px; } .ai-caveats p { font-size:8px;line-height:1.6;margin:0 0 4px; }
+.ai-reference { display:flex;gap:6px;align-items:flex-start;font-size:8.5px;line-height:1.5;color:#3f7249;margin:0; }
+.ai-assistant { padding:22px;margin-top:18px; }
+.ai-assistant h2 { font:700 19px var(--app-font-serif);letter-spacing:-.5px;margin:6px 0 8px; }
+.ai-ask-row { display:flex;gap:8px;align-items:center;flex-wrap:wrap; }
+.ai-ask-row .text-input { flex:1;min-width:180px; }
+.ai-ask-diet { margin-top:2px; } .ai-ask-diet .field-label { margin:0; } .ai-ask-diet .ai-select { width:auto;min-width:190px; }
+.ai-result { display:flex;flex-direction:column;gap:10px;margin-top:14px; }
+.ai-chips { display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 10px; }
+.ai-chip { display:inline-flex;align-items:center;gap:4px;border:1px solid hsl(var(--border));background:transparent;color:hsl(var(--foreground));border-radius:99px;padding:5px 10px;font-size:9px;font-weight:600;cursor:pointer;transition:background .2s,border-color .2s; }
+.ai-chip small { font-weight:400;color:hsl(var(--muted-foreground)); }
+.ai-chip.on { background:hsl(var(--primary) / .12);border-color:hsl(var(--primary));color:hsl(var(--primary)); }
+.ai-photo { margin-top:12px; } .ai-photo-button { position:relative;cursor:pointer; } .ai-photo-button.is-disabled { opacity:.5;cursor:not-allowed; }
+.ai-photo-button input { position:absolute;width:1px;height:1px;opacity:0; } .ai-photo-button:focus-within { outline:3px solid hsl(var(--primary) / .28);outline-offset:2px; }
+.ai-photo-result { margin-top:10px;display:flex;flex-direction:column;align-items:flex-start;gap:6px; }
+.ai-recipe { display:flex;flex-direction:column;gap:8px;padding:14px 0;border-bottom:1px solid hsl(var(--border)); }
+.ai-ingredient-list { list-style:none;margin:0;padding:0;display:grid;grid-template-columns:1fr 1fr;gap:5px 14px; }
+.ai-ingredient-list li { display:flex;align-items:center;gap:6px;font-size:9px; }
+.ai-ingredient-list li > span { width:14px;display:inline-flex;justify-content:center;flex-shrink:0; }
+.ai-ingredient-list small,.ai-ingredient-list em { color:hsl(var(--muted-foreground));font-size:8px; }
+.ai-ingredient-list li.have > span { color:#3f7249; } .ai-ingredient-list li.missing b { color:#916732; } .ai-ingredient-list li.optional,.ai-ingredient-list li.staple { opacity:.75; }
+.ai-ok { display:flex;align-items:center;gap:5px;color:#3f7249; }
+.ai-followup { margin-top:16px;display:flex;flex-direction:column;gap:8px; }
+.ai-recipe-tabs { margin-top:14px;flex-wrap:wrap; } .ai-recipe-tabs button { min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-inline:8px; }
+@media (max-width:600px) { .ai-grid,.ai-ingredient-list { grid-template-columns:1fr; } .ai-assistant { padding:16px; } }

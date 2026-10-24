@@ -250,8 +250,198 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ChefGuide"
+  /v1/ai/status:
+    get:
+      operationId: getAiStatus
+      tags: [food]
+      summary: Whether AI features are configured on the server
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+  /v1/ai/food-info:
+    post:
+      operationId: aiFoodInfo
+      tags: [food]
+      summary: Look up a food or answer a food question
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AiFoodInfoInput'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '422':
+          description: Invalid input (detail.code, detail.message)
+        '429':
+          description: Rate limited
+        '503':
+          description: AI not configured (ANTHROPIC_API_KEY missing)
+  /v1/ai/analyze-media:
+    post:
+      operationId: aiAnalyzeMedia
+      tags: [food]
+      summary: Analyze food photos, video frames or a text description
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AiAnalyzeMediaInput'
+      responses:
+        '201':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '422':
+          description: Invalid input (detail.code, detail.message)
+        '429':
+          description: Rate limited
+        '503':
+          description: AI not configured (ANTHROPIC_API_KEY missing)
+  /v1/ai/identify-ingredients:
+    post:
+      operationId: aiIdentifyIngredients
+      tags: [food]
+      summary: Identify ingredients in photos
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AiIdentifyIngredientsInput'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '422':
+          description: Invalid input (detail.code, detail.message)
+        '429':
+          description: Rate limited
+        '503':
+          description: AI not configured (ANTHROPIC_API_KEY missing)
+  /v1/ai/recipes:
+    post:
+      operationId: aiRecipes
+      tags: [food]
+      summary: Generate or revise recipes
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AiRecipeInput'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '422':
+          description: Invalid input (detail.code, detail.message)
+        '429':
+          description: Rate limited
+        '503':
+          description: AI not configured (ANTHROPIC_API_KEY missing)
+  /v1/ai/suggestions:
+    post:
+      operationId: aiSuggestions
+      tags: [food]
+      summary: Personalised food suggestions
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AiSuggestionsInput'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '422':
+          description: Invalid input (detail.code, detail.message)
+        '429':
+          description: Rate limited
+        '503':
+          description: AI not configured (ANTHROPIC_API_KEY missing)
 components:
   schemas:
+    AiFoodInfoInput:
+      type: object
+      required: [query]
+      properties:
+        query: {type: string, maxLength: 400}
+        dietConvention: {type: string, enum: [none, vegetarian, eggetarian, vegan, jain]}
+        allergies: {type: array, items: {type: string}}
+        ingredientList: {type: array, items: {type: string}}
+    AiImage:
+      type: object
+      required: [data]
+      properties:
+        data: {type: string, description: Base64 image bytes or data URL}
+        mimeType: {type: string}
+        timestamp: {type: number, description: Video time in seconds}
+    AiAnalyzeMediaInput:
+      type: object
+      required: [kind]
+      properties:
+        kind: {type: string, enum: [image, video, text, audio]}
+        images: {type: array, maxItems: 8, items: {$ref: '#/components/schemas/AiImage'}}
+        description: {type: string, maxLength: 1000}
+        fileName: {type: [string, 'null']}
+        dietConvention: {type: string}
+        goal: {type: [string, 'null']}
+        allergies: {type: array, items: {type: string}}
+    AiIdentifyIngredientsInput:
+      type: object
+      required: [images]
+      properties:
+        images: {type: array, maxItems: 4, items: {$ref: '#/components/schemas/AiImage'}}
+        note: {type: string, maxLength: 300}
+    AiRecipeInput:
+      type: object
+      properties:
+        ingredients: {type: array, items: {type: string}}
+        dish: {type: string}
+        dietConvention: {type: string}
+        allergies: {type: array, items: {type: string}}
+        excludeIngredients: {type: array, items: {type: string}}
+        preferences: {type: object, additionalProperties: true}
+        previousRecipe: {type: [object, 'null'], additionalProperties: true}
+        followUp: {type: string}
+        assumePantryStaples: {type: boolean}
+    AiSuggestionsInput:
+      type: object
+      properties:
+        goal: {type: string}
+        dietConvention: {type: string}
+        allergies: {type: array, items: {type: string}}
+        ingredients: {type: array, items: {type: string}}
+        context: {type: string}
     HealthStatus:
       type: object
       properties:

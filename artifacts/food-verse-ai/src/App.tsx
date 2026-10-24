@@ -15,13 +15,18 @@ import {
 } from 'lucide-react';
 import {
   useHealthCheck, useGetDashboard, getGetDashboardQueryKey,
-  useListScans, getListScansQueryKey, useScanFood, useDetectFreshness,
+  useListScans, getListScansQueryKey, useDetectFreshness,
   useListAudits, getListAuditsQueryKey, useAnalyzeHygiene,
   useGetProfile, getGetProfileQueryKey, useSaveProfile,
   useGetMealPlan, getGetMealPlanQueryKey, useGenerateMealPlan,
-  useUpdateMealCompletion, useUpdateGroceryItem, useCreateChefGuide,
+  useUpdateMealCompletion, useUpdateGroceryItem,
 } from '@workspace/api-client-react';
-import type { FoodScan, HygieneAudit, MealPlan, NutritionProfile, ChefGuide } from '@workspace/api-client-react';
+import type { FoodScan, HygieneAudit, MealPlan, NutritionProfile } from '@workspace/api-client-react';
+import {
+  VIDEO_LIMITS, extractVideoFrames, imageFileToPayload, useAiRecipes, useAiStatus, useAnalyzeMedia, useDietConvention,
+  type AiFoodScan, type ImagePayload, type Recipe, type RecipePreferences,
+} from '@/lib/food-ai';
+import { AiSetupNotice, AnalysisDetails, DietBadge, DietSelect, FoodAssistant, IngredientPhoto, RecipeDetails } from '@/components/ai-panels';
 
 const queryClient = new QueryClient();
 const navItems = [
@@ -170,7 +175,11 @@ function EmptyState({ icon: Icon, title, text, link, linkText }: { icon: typeof 
 function ScannerPage() {
   const queryClient = useQueryClient();
   const scans = useListScans();
-  const scanMutation = useScanFood();
+  const analyze = useAnalyzeMedia();
+  const aiStatus = useAiStatus();
+  const [diet, setDiet] = useDietConvention();
+  const [progress, setProgress] = useState('');
+  const filesRef = useRef<Record<'image' | 'video' | 'audio' | 'text', File | null>>({ image: null, video: null, audio: null, text: null });
   const freshnessMutation = useDetectFreshness();
   const [source, setSource] = useState<'image' | 'video' | 'audio' | 'text'>('image');
   const [description, setDescription] = useState('');
@@ -180,18 +189,19 @@ function ScannerPage() {
   const [freshFood, setFreshFood] = useState('');
   const [freshNotes, setFreshNotes] = useState('');
   const [freshResult, setFreshResult] = useState<FoodScan['freshness'] | null>(null);
-  const [selected, setSelected] = useState<FoodScan | null>(null);
+  const [selected, setSelected] = useState<AiFoodScan | null>(null);
   const [mediaError, setMediaError] = useState('');
   const [listening, setListening] = useState(false);
   const recognitionRef = useRef<VoiceRecognitionLike | null>(null);
   const onFile = (file?: File) => {
     if (!file) return;
-    if (file.size > 20 * 1024 * 1024) { setMediaError('Choose a file smaller than 20 MB.'); return; }
-    const validType = source === 'image' ? file.type.startsWith('image/') : source === 'video' ? file.type.startsWith('video/') : source === 'audio' ? file.type.startsWith('audio/') : true;
+    const limit = source === 'video' ? VIDEO_LIMITS.maxBytes : 20 * 1024 * 1024;
+    if (file.size > limit) { setMediaError(`Choose a file smaller than ${Math.round(limit / 1024 / 1024)} MB.`); return; }
+    const validType = source === 'image' ? file.type.startsWith('image/') : source === 'video' ? file.type.startsWith('video/') : false;
     if (!validType) { setMediaError(`Choose a ${source} file.`); return; }
     setMediaError('');
+    filesRef.current[source] = file;
     setFileName(file.name);
-    if (!description.trim()) setDescription(file.name.replace(/\.[^.]+$/, '').replaceAll(/[-_]/g, ' '));
   };
   const startVoiceQuery = () => {
     const speech = window as unknown as { SpeechRecognition?: new () => VoiceRecognitionLike; webkitSpeechRecognition?: new () => VoiceRecognitionLike };
@@ -218,10 +228,30 @@ function ScannerPage() {
     }
   };
   const stopVoiceQuery = () => { recognitionRef.current?.stop(); setListening(false); };
-  const runScan = () => scanMutation.mutate({ data: { source, fileName: fileName || null, description } }, { onSuccess: (scan) => { setSelected(scan); void queryClient.invalidateQueries({ queryKey: getListScansQueryKey() }); void queryClient.invalidateQueries({ queryKey: getGetDashboardQueryKey() }); } });
+  const finishScan = (scan: AiFoodScan) => { setSelected(scan); void queryClient.invalidateQueries({ queryKey: getListScansQueryKey() }); void queryClient.invalidateQueries({ queryKey: getGetDashboardQueryKey() }); };
+  const runScan = async () => {
+    setMediaError('');
+    let images: ImagePayload[] | undefined;
+    try {
+      const file = filesRef.current[source];
+      if (source === 'image' && file) { setProgress('Preparing your photo…'); images = [await imageFileToPayload(file)]; }
+      else if (source === 'video' && file) { setProgress('Reading frames from your video…'); images = (await extractVideoFrames(file, (done, total) => setProgress(`Reading frame ${done} of ${total}…`))).frames; }
+    } catch (error) {
+      setProgress('');
+      setMediaError(error instanceof Error ? error.message : 'We couldn’t read that file.');
+      return;
+    }
+    setProgress('Analyzing with AI…');
+    analyze.mutate({ kind: source, images, description, fileName: fileName || null, dietConvention: diet }, { onSuccess: finishScan, onSettled: () => setProgress('') });
+  };
+  const needsFile = source === 'image' || source === 'video';
+  const canAnalyze = needsFile ? Boolean(fileName) : description.trim().length >= 3;
+  const analyzing = Boolean(progress) || analyze.isPending;
+  const aiBlocked = aiStatus.data ? !aiStatus.data.configured : false;
   const runFreshness = () => freshnessMutation.mutate({ data: { food: freshFood, fileName: fileName || null, notes: freshNotes } }, { onSuccess: setFreshResult });
   return <>
     <PageHeading eyebrow="SEE WHAT'S ON YOUR PLATE" title="Know your food, better." description="A photo or a few words can bring more clarity to every meal." />
+    <AiSetupNotice status={aiStatus.data} />
     <div className="scanner-layout">
       <div className="panel scan-workspace">
         <div className="scanner-tabs">
@@ -230,29 +260,31 @@ function ScannerPage() {
           <button className={source === 'audio' ? 'selected' : ''} onClick={() => setSource('audio')} data-testid="tab-scan-audio"><AudioLines size={15} /> Voice</button>
           <button className={source === 'text' ? 'selected' : ''} onClick={() => setSource('text')} data-testid="tab-scan-text"><Utensils size={15} /> Text</button>
         </div>
-        {source !== 'text' && <label className="upload-zone" htmlFor="food-upload" data-testid={`dropzone-food-${source}`} onDragOver={event => event.preventDefault()} onDrop={event => { event.preventDefault(); onFile(event.dataTransfer.files?.[0]); }}>
+        {needsFile && <label className="upload-zone" htmlFor="food-upload" data-testid={`dropzone-food-${source}`} onDragOver={event => event.preventDefault()} onDrop={event => { event.preventDefault(); onFile(event.dataTransfer.files?.[0]); }}>
           <span className="upload-graphic"><CloudUpload size={23} /></span>
-          <strong>{fileName || (source === 'image' ? 'Drop a food photo here' : source === 'video' ? 'Drop a food video here' : 'Drop an audio clip here')}</strong>
+          <strong>{fileName || (source === 'image' ? 'Drop a food photo here' : 'Drop a food video here')}</strong>
           <span>or choose a {source} file from your device</span>
-          <small>{source === 'image' ? 'JPG, PNG or WEBP' : source === 'video' ? 'MP4, MOV or WEBM' : 'MP3, WAV or M4A'} · up to 20 MB</small>
-          <input id="food-upload" type="file" accept={source === 'image' ? 'image/*' : source === 'video' ? 'video/*' : 'audio/*'} onChange={e => onFile(e.target.files?.[0])} data-testid={`input-food-${source}`} />
+          <small>{source === 'image' ? 'JPG, PNG or WEBP · up to 20 MB' : `MP4 or WEBM · up to ${VIDEO_LIMITS.maxBytes / 1024 / 1024} MB, ${VIDEO_LIMITS.maxSeconds / 60} min`}</small>
+          <input id="food-upload" type="file" accept={source === 'image' ? 'image/*' : 'video/*'} onChange={e => onFile(e.target.files?.[0])} data-testid={`input-food-${source}`} />
         </label>}
         {source === 'audio' && <button className={`voice-capture ${listening ? 'capturing' : ''}`} onClick={listening ? stopVoiceQuery : startVoiceQuery} data-testid="button-record-food-query"><AudioLines size={16} />{listening ? 'Stop listening' : 'Ask by voice'}<span>{listening ? 'Listening…' : 'Uses your browser microphone'}</span></button>}
         {mediaError && <div className="inline-error" role="alert">{mediaError}</div>}
-        <label className="field-label" htmlFor="meal-description">{source === 'audio' ? 'Your voice question or transcript' : source === 'image' ? 'Add a little context' : source === 'video' ? 'Describe the food shown' : 'What’s on your plate?'}</label>
+        <label className="field-label" htmlFor="scan-diet">Your diet</label><DietSelect id="scan-diet" value={diet} onChange={setDiet} />
+        <label className="field-label" htmlFor="meal-description">{source === 'audio' ? 'Your voice question or transcript' : source === 'image' ? 'Add a little context (optional)' : source === 'video' ? 'Anything we should know? (optional)' : 'What’s on your plate?'}</label>
         <textarea id="meal-description" value={description} onChange={e => setDescription(e.target.value)} placeholder="For example: roasted salmon with quinoa, greens and lemon..." rows={3} maxLength={1000} data-testid="input-meal-description" />
-        <div className="form-foot"><span>{description.length}/1000</span><button className="button button-primary" disabled={!description.trim() || scanMutation.isPending} onClick={runScan} data-testid="button-analyze-food"><ScanLine size={16} /> {scanMutation.isPending ? 'Looking closer…' : 'Analyze this meal'} <ArrowRight size={15} /></button></div>
-        {scanMutation.isError && <div className="inline-error" role="alert">We couldn’t complete that scan. Please try again.</div>}
-        <p className="estimate-note"><CircleHelp size={14} /> Demo estimates use your description and filename. Media stays in this browser; results are not medical advice.</p>
+        <div className="form-foot"><span>{description.length}/1000</span><button className="button button-primary" disabled={!canAnalyze || analyzing || aiBlocked} onClick={() => void runScan()} data-testid="button-analyze-food"><ScanLine size={16} /> {progress || (analyze.isPending ? 'Looking closer…' : 'Analyze this meal')} <ArrowRight size={15} /></button></div>
+        {analyze.isError && <div className="inline-error" role="alert" data-testid="text-scan-error">{analyze.error.message}</div>}
+        <p className="estimate-note"><CircleHelp size={14} /> AI estimates from your {source === 'video' ? 'video frames' : source === 'image' ? 'photo' : 'words'}. Photos and frames are sent to an AI service for analysis (videos are sampled in your browser; only the frames leave it). Results are approximate, not medical advice.</p>
       </div>
       {selected ? <div className="panel result-panel">
         <div className="result-top"><div><div className="eyebrow">YOUR FOOD SNAPSHOT</div><h2>{selected.dishName}</h2></div><button className="icon-button" aria-label="Close results" onClick={() => setSelected(null)} data-testid="button-close-scan-results"><X size={18} /></button></div>
-        <Ring value={selected.healthScore} label="Health score" sub={`${selected.confidence}% match confidence`} />
+        {selected.analysis?.nutritionAvailable === false ? <div className="ai-notice" role="status"><CircleHelp size={16} /><span>There wasn’t enough to estimate nutrition reliably. Add a description or a clearer photo for numbers.</span></div> : <><Ring value={selected.healthScore} label="Health score" sub={`${selected.confidence}% match confidence`} />
         <div className="macro-grid"><div><span>Energy</span><strong>{selected.nutrition.calories}<small> kcal</small></strong></div><div><span>Protein</span><strong>{selected.nutrition.protein}<small> g</small></strong></div><div><span>Carbs</span><strong>{selected.nutrition.carbs}<small> g</small></strong></div><div><span>Fat</span><strong>{selected.nutrition.fat}<small> g</small></strong></div></div>
         <div className="scan-nutrients"><div className="fiber-value"><span>Fiber</span><strong>{selected.nutrition.fiber}<small> g</small></strong></div><div className="micronutrients"><span className="mini-heading">POSSIBLE MICRONUTRIENTS</span><div className="tag-list">{selected.nutrition.micronutrients.map(item => <span key={item}>{item}</span>)}</div></div></div>
-        <div className="score-signals"><div className="signal-heading"><span className="mini-heading">HEALTH SCORE SIGNALS</span><small>Illustrative demo breakdown</small></div>{selected.healthBreakdown.map(signal => <div className="score-signal" key={signal.label} data-testid={`signal-${signal.label.toLowerCase().replaceAll(' ', '-')}`}><div><span>{signal.label}</span><strong>{signal.score}</strong></div><div className="signal-track" role="progressbar" aria-label={signal.label} aria-valuenow={signal.score} aria-valuemin={0} aria-valuemax={100}><i style={{ width: `${signal.score}%` }} /></div><small>{signal.detail}</small></div>)}</div>
+        <div className="score-signals"><div className="signal-heading"><span className="mini-heading">HEALTH SCORE SIGNALS</span><small>Heuristic from the estimates above</small></div>{selected.healthBreakdown.map(signal => <div className="score-signal" key={signal.label} data-testid={`signal-${signal.label.toLowerCase().replaceAll(' ', '-')}`}><div><span>{signal.label}</span><strong>{signal.score}</strong></div><div className="signal-track" role="progressbar" aria-label={signal.label} aria-valuenow={signal.score} aria-valuemin={0} aria-valuemax={100}><i style={{ width: `${signal.score}%` }} /></div><small>{signal.detail}</small></div>)}</div>
         <div className="ingredient-wrap"><span className="mini-heading">POSSIBLE INGREDIENTS</span><div className="tag-list">{selected.ingredients.map(item => <span key={item}>{item}</span>)}</div></div>
-        <div className={`freshness-result ${selected.freshness.status}`}><ShieldCheck size={18} /><div><strong>{selected.freshness.label}</strong><p>{selected.freshness.guidance}</p></div></div>
+        <div className={`freshness-result ${selected.freshness.status}`}><ShieldCheck size={18} /><div><strong>{selected.freshness.label}</strong><p>{selected.freshness.guidance}</p></div></div></>}
+        {selected.analysis && <AnalysisDetails analysis={selected.analysis} />}
       </div> : <div className="scanner-aside"><div className="aside-nutrition"><span className="eyebrow">A CLEARER PICTURE</span><h3>Insight for the<br />everyday plate.</h3><p>Get a thoughtful estimate of nutrition, ingredients, and food freshness in one place.</p><div className="circle-food"><div className="food-dot fd-one" /><div className="food-dot fd-two" /><div className="food-dot fd-three" /><div className="food-dot fd-four" /><div className="food-dot fd-five" /><span>FV</span></div><div className="aside-features"><span><Check size={14} /> Nutrition overview</span><span><Check size={14} /> Ingredient cues</span><span><Check size={14} /> Freshness estimate</span></div></div>
         <div className="freshness-card">
           <div className="freshness-card-head"><div className="freshness-mini-icon"><ShieldCheck size={17} /></div><div><strong>Freshness check</strong><span>Quickly check what’s in the fridge</span></div></div>
@@ -264,6 +296,7 @@ function ScannerPage() {
         </div>
       </div>}
     </div>
+    <FoodAssistant diet={diet} onDietChange={setDiet} status={aiStatus.data} />
     <section className="recent-section"><div className="section-row"><div><div className="eyebrow">YOUR JOURNAL</div><h2 className="section-title">Recent food scans</h2></div><span className="count-label">{scans.data?.length ?? 0} entries</span></div>{scans.isLoading ? <div className="skeleton skeleton-row" /> : scans.isError ? <ErrorNotice retry={() => void scans.refetch()} /> : scans.data?.length ? <div className="scan-list">{scans.data.map(scan => <ScanRow key={scan.id} scan={scan} />)}</div> : <EmptyState icon={ScanLine} title="Nothing scanned yet" text="Your first scan will appear here, ready whenever you need a quick reference." link="/scanner" linkText="Start a scan" />}</section>
   </>;
 }
@@ -300,44 +333,112 @@ function HygienePage() {
   </>;
 }
 
+const CUISINES = ['Any', 'North Indian', 'South Indian', 'Gujarati', 'Bengali', 'Maharashtrian', 'Punjabi', 'Rajasthani', 'Italian', 'Mexican', 'Chinese', 'Thai', 'Mediterranean'];
+const VARIATIONS = ['Spicy', 'Mild', 'High-protein', 'Budget-friendly', 'Traditional', 'Quick'];
+const EQUIPMENT = ['Stovetop', 'Oven', 'Pressure cooker', 'Microwave', 'Air fryer', 'Blender'];
+const FOLLOW_UPS = ['Make it without onion', 'Give me a vegan version', 'Reduce the cooking time'];
+const splitList = (text: string) => [...new Set(text.split(/[,\n]/).map(item => item.trim()).filter(Boolean))];
+
 function ChefPage() {
   const profile = useGetProfile();
   const scans = useListScans();
-  const createGuide = useCreateChefGuide();
+  const aiStatus = useAiStatus();
+  const recipesMutation = useAiRecipes();
+  const followUpMutation = useAiRecipes();
+  const [diet, setDiet] = useDietConvention();
   const [dish, setDish] = useState('');
   const [ingredientsText, setIngredientsText] = useState('');
-  const [guide, setGuide] = useState<ChefGuide | null>(null);
+  const [skipText, setSkipText] = useState('');
+  const [cuisine, setCuisine] = useState('Any');
+  const [spice, setSpice] = useState('');
+  const [maxMinutes, setMaxMinutes] = useState('');
+  const [difficulty, setDifficulty] = useState('');
+  const [servings, setServings] = useState('');
+  const [variation, setVariation] = useState('');
+  const [equipment, setEquipment] = useState<string[]>([]);
+  const [recipes, setRecipes] = useState<Recipe[]>([]);
+  const [meta, setMeta] = useState<{ notes: string | null; question: string | null; removed: string[] }>({ notes: null, question: null, removed: [] });
+  const [selectedIndex, setSelectedIndex] = useState(0);
   const [activeStep, setActiveStep] = useState(0);
   const [speaking, setSpeaking] = useState(false);
+  const [followUp, setFollowUp] = useState('');
+  const recipe: Recipe | undefined = recipes[selectedIndex];
+  const aiBlocked = aiStatus.data ? !aiStatus.data.configured : false;
+  const stopVoice = () => { window.speechSynthesis?.cancel(); setSpeaking(false); };
+  const request = () => {
+    const preferences: RecipePreferences = {};
+    if (cuisine !== 'Any') preferences.cuisine = cuisine;
+    if (spice) preferences.spiceLevel = spice as RecipePreferences['spiceLevel'];
+    if (maxMinutes) preferences.maxMinutes = Number(maxMinutes);
+    if (difficulty) preferences.difficulty = difficulty as RecipePreferences['difficulty'];
+    if (servings && Number(servings) > 0) preferences.servings = Math.min(Number(servings), 20);
+    if (equipment.length) preferences.equipment = equipment;
+    if (variation) preferences.variation = variation;
+    return { ingredients: splitList(ingredientsText), dish: dish.trim(), dietConvention: diet, excludeIngredients: splitList(skipText), preferences };
+  };
   const generate = () => {
-    const typedIngredients = ingredientsText.split(',').map(item => item.trim()).filter(Boolean);
-    const ingredients = typedIngredients.length ? typedIngredients : scans.data?.[0]?.ingredients ?? [];
-    createGuide.mutate({ data: { dish, ingredients, allergies: profile.data?.allergies ?? [] } }, { onSuccess: result => { setGuide(result); setActiveStep(0); } });
+    stopVoice();
+    recipesMutation.mutate(request(), { onSuccess: result => { setRecipes(result.recipes); setMeta({ notes: result.notes, question: result.clarifyingQuestion, removed: result.removedForSafety }); setSelectedIndex(0); setActiveStep(0); } });
+  };
+  const applyFollowUp = (text: string) => {
+    if (!recipe || !text.trim()) return;
+    stopVoice();
+    followUpMutation.mutate({ ...request(), previousRecipe: recipe, followUp: text.trim() }, { onSuccess: result => {
+      if (result.recipes[0]) { setRecipes(current => current.map((item, index) => index === selectedIndex ? result.recipes[0] : item)); setActiveStep(0); setFollowUp(''); }
+      setMeta(previous => ({ notes: result.notes ?? previous.notes, question: result.clarifyingQuestion, removed: result.removedForSafety }));
+    } });
   };
   const toggleVoice = () => {
-    if (!guide || !('speechSynthesis' in window)) { setSpeaking(false); return; }
-    if (speaking) { window.speechSynthesis.cancel(); setSpeaking(false); }
-    else { const utterance = new SpeechSynthesisUtterance(guide.voiceScript || guide.steps[activeStep]); utterance.onend = () => setSpeaking(false); setSpeaking(true); window.speechSynthesis.speak(utterance); }
+    if (!recipe || !('speechSynthesis' in window)) { setSpeaking(false); return; }
+    if (speaking) { stopVoice(); return; }
+    const utterance = new SpeechSynthesisUtterance(recipe.steps.map((step, index) => `Step ${index + 1}. ${step.text}`).join(' '));
+    utterance.onend = () => setSpeaking(false);
+    setSpeaking(true);
+    window.speechSynthesis.speak(utterance);
   };
   useEffect(() => () => window.speechSynthesis?.cancel(), []);
+  const allergies = profile.data?.allergies ?? [];
+  const step = recipe?.steps[activeStep];
   return <>
     <PageHeading eyebrow="YOUR CALM IN-KITCHEN COMPANION" title="Let’s make something good." description="A clear, steady guide for what you’re already craving." />
+    <AiSetupNotice status={aiStatus.data} />
     <div className="chef-layout">
       <div className="panel chef-prompt">
-        <div className="chef-stamp"><CookingPot size={23} /></div><div className="eyebrow">A RECIPE, YOUR WAY</div><h2>What sounds<br /><em>good today?</em></h2><p>Tell your kitchen companion what you’d like to cook. We’ll make the steps easy to follow.</p>
-        <label className="field-label" htmlFor="chef-dish">Dish or idea</label><input id="chef-dish" className="text-input" value={dish} onChange={e => setDish(e.target.value)} placeholder="e.g. lemony chickpea bowls" maxLength={120} data-testid="input-chef-dish" />
+        <div className="chef-stamp"><CookingPot size={23} /></div><div className="eyebrow">A RECIPE, YOUR WAY</div><h2>What sounds<br /><em>good today?</em></h2><p>Tell your kitchen companion what you have, or what you’d like to cook. We’ll make the steps easy to follow.</p>
+        <label className="field-label" htmlFor="chef-dish">Dish or idea <span>(optional)</span></label><input id="chef-dish" className="text-input" value={dish} onChange={e => setDish(e.target.value)} placeholder="e.g. lemony chickpea bowls" maxLength={120} data-testid="input-chef-dish" />
         <label className="field-label" htmlFor="chef-ingredients">Ingredients you have</label><input id="chef-ingredients" className="text-input" value={ingredientsText} onChange={e => setIngredientsText(e.target.value)} placeholder="Comma-separated ingredients" data-testid="input-chef-ingredients" />
+        <IngredientPhoto disabled={aiBlocked} onUse={names => setIngredientsText(splitList([ingredientsText, ...names].filter(Boolean).join(',')).join(', '))} />
         {scans.data?.[0] && <button className="text-button scan-ingredients-button" onClick={() => { setDish(scans.data?.[0]?.dishName ?? dish); setIngredientsText(scans.data?.[0]?.ingredients.join(', ') ?? ''); }} data-testid="button-use-latest-scan">Use latest scan: {scans.data[0].dishName}</button>}
+        <label className="field-label" htmlFor="chef-skip">Skip these <span>(don’t have or don’t want)</span></label><input id="chef-skip" className="text-input" value={skipText} onChange={e => setSkipText(e.target.value)} placeholder="e.g. onion, cream" data-testid="input-chef-skip" />
+        <div className="ai-grid">
+          <div><label className="field-label" htmlFor="chef-diet">Diet</label><DietSelect id="chef-diet" value={diet} onChange={setDiet} /></div>
+          <div><label className="field-label" htmlFor="chef-cuisine">Cuisine</label><select id="chef-cuisine" className="text-input ai-select" value={cuisine} onChange={e => setCuisine(e.target.value)} data-testid="select-chef-cuisine">{CUISINES.map(item => <option key={item}>{item}</option>)}</select></div>
+          <div><label className="field-label" htmlFor="chef-spice">Spice level</label><select id="chef-spice" className="text-input ai-select" value={spice} onChange={e => setSpice(e.target.value)} data-testid="select-chef-spice"><option value="">Any</option><option value="mild">Mild</option><option value="medium">Medium</option><option value="hot">Hot</option></select></div>
+          <div><label className="field-label" htmlFor="chef-time">Time available</label><select id="chef-time" className="text-input ai-select" value={maxMinutes} onChange={e => setMaxMinutes(e.target.value)} data-testid="select-chef-time"><option value="">No limit</option><option value="15">Up to 15 min</option><option value="30">Up to 30 min</option><option value="45">Up to 45 min</option><option value="60">Up to 1 hour</option></select></div>
+          <div><label className="field-label" htmlFor="chef-difficulty">Difficulty</label><select id="chef-difficulty" className="text-input ai-select" value={difficulty} onChange={e => setDifficulty(e.target.value)} data-testid="select-chef-difficulty"><option value="">Any</option><option value="easy">Easy</option><option value="medium">Medium</option><option value="hard">Hard</option></select></div>
+          <div><label className="field-label" htmlFor="chef-servings">Servings</label><input id="chef-servings" type="number" min={1} max={20} className="text-input" value={servings} onChange={e => setServings(e.target.value)} placeholder="2" data-testid="input-chef-servings" /></div>
+        </div>
+        <div className="suggestions-label">Equipment you have</div><div className="tag-list ai-chips">{EQUIPMENT.map(item => <button type="button" key={item} className={`ai-chip ${equipment.includes(item) ? 'on' : ''}`} aria-pressed={equipment.includes(item)} onClick={() => setEquipment(equipment.includes(item) ? equipment.filter(x => x !== item) : [...equipment, item])} data-testid={`chip-equipment-${item.toLowerCase().replaceAll(' ', '-')}`}>{item}</button>)}</div>
+        <div className="suggestions-label">Make it more…</div><div className="tag-list ai-chips">{VARIATIONS.map(item => <button type="button" key={item} className={`ai-chip ${variation === item ? 'on' : ''}`} aria-pressed={variation === item} onClick={() => setVariation(variation === item ? '' : item)} data-testid={`chip-variation-${item.toLowerCase()}`}>{item}</button>)}</div>
         <div className="suggestions-label">A few ideas to begin</div><div className="suggestions">{['Herby lentil soup', 'Crispy tofu bowls', 'Lemon salmon'].map(item => <button key={item} onClick={() => setDish(item)} data-testid={`button-suggest-${item.toLowerCase().replaceAll(' ', '-')}`}>{item} <Plus size={13} /></button>)}</div>
-        <button className="button button-primary full-button" onClick={generate} disabled={!dish.trim() || createGuide.isPending} data-testid="button-create-guide"><Sparkles size={16} />{createGuide.isPending ? 'Gathering the steps…' : 'Build my cooking guide'}<ArrowRight size={15} /></button>{createGuide.isError && <div className="inline-error">Your guide didn’t come together. Please try once more.</div>}<div className="chef-allergy-tip"><HeartPulse size={15} /><span>{profile.data?.allergies?.length ? `Your allergy notes are included: ${profile.data.allergies.join(', ')}` : 'Set your allergies in your profile to personalize recipe warnings.'}</span></div>
+        <button className="button button-primary full-button" onClick={generate} disabled={(!dish.trim() && !ingredientsText.trim()) || recipesMutation.isPending || aiBlocked} data-testid="button-create-guide"><Sparkles size={16} />{recipesMutation.isPending ? 'Gathering the steps…' : 'Build my cooking guide'}<ArrowRight size={15} /></button>{recipesMutation.isError && <div className="inline-error" role="alert" data-testid="text-chef-error">{recipesMutation.error.message}</div>}<div className="chef-allergy-tip"><HeartPulse size={15} /><span>{allergies.length ? `Your allergy notes are applied to every recipe: ${allergies.join(', ')}` : 'Set your allergies in your profile so every recipe is checked against them.'}</span></div>
       </div>
-      {guide ? <div className="panel guide-panel"><div className="guide-header"><div><div className="eyebrow">YOUR COOKING GUIDE</div><h2>{guide.dish}</h2><div className="guide-meta"><span><Clock3 size={14} /> {guide.prepMinutes} min prep</span><span><Flame size={14} /> {guide.cookMinutes} min cook</span><span><Utensils size={14} /> Serves {guide.servings}</span></div></div><button className={`voice-button ${speaking ? 'is-speaking' : ''}`} onClick={toggleVoice} data-testid="button-voice-playback"><AudioLines size={17} />{speaking ? 'Stop voice' : 'Listen'}</button></div>
-        {guide.allergyWarnings.length > 0 && <div className="allergy-warning"><AlertTriangle size={16} /><div><strong>Allergy note</strong><span>{guide.allergyWarnings.join(' · ')}</span></div></div>}
-        <div className="steps-heading"><span className="mini-heading">COOKING, ONE STEP AT A TIME</span><span>{activeStep + 1} / {guide.steps.length}</span></div><div className="step-progress">{guide.steps.map((_, i) => <i key={`step-${i}`} className={i <= activeStep ? 'done' : ''} />)}</div>
-        <div className="active-step"><span className="step-number">{String(activeStep + 1).padStart(2, '0')}</span><div><span className="eyebrow">STEP {activeStep + 1}</span><p>{guide.steps[activeStep]}</p></div></div>
-        <div className="step-controls"><button className="button button-outline" onClick={() => { setActiveStep(Math.max(activeStep - 1, 0)); window.speechSynthesis?.cancel(); setSpeaking(false); }} disabled={activeStep === 0} data-testid="button-previous-step">Previous</button><button className="button button-primary" onClick={() => { setActiveStep(Math.min(activeStep + 1, guide.steps.length - 1)); window.speechSynthesis?.cancel(); setSpeaking(false); }} disabled={activeStep === guide.steps.length - 1} data-testid="button-next-step">Next step <ArrowRight size={15} /></button></div>
-        <div className="guide-extras"><details><summary>Ingredient substitutions <ChevronDown size={15} /></summary><ul>{guide.substitutions.map((item, i) => <li key={`${i}-${item}`}>{item}</li>)}</ul></details><details><summary>Allergy & ingredient notes <ChevronDown size={15} /></summary><ul>{guide.allergyWarnings.length ? guide.allergyWarnings.map((item, i) => <li key={`${i}-${item}`}>{item}</li>) : <li>No warnings returned. Always verify ingredient packaging for your needs.</li>}</ul></details></div>
-      </div> : <div className="panel chef-empty"><div className="chef-art"><div className="plate-art"><span /><span /><span /><span /></div><i className="steam steam-one" /><i className="steam steam-two" /></div><span className="eyebrow">FROM IDEA TO TABLE</span><h3>A gentler way<br />to get dinner going.</h3><p>Your guide will include approachable steps, thoughtful substitutions, and allergy notes.</p><div className="empty-benefits"><span><Check size={14} /> Step-by-step pacing</span><span><Check size={14} /> Optional voice playback</span><span><Check size={14} /> Allergy-aware guidance</span></div>{scans.data?.length ? <div className="chef-recent">Inspired by your latest scan: <strong>{scans.data[0].dishName}</strong></div> : null}</div>}
+      {recipe && step ? <div className="panel guide-panel"><div className="guide-header"><div><div className="eyebrow">YOUR COOKING GUIDE</div><h2>{recipe.name}</h2><div className="guide-meta"><span><Clock3 size={14} /> {recipe.prepMinutes} min prep</span><span><Flame size={14} /> {recipe.cookMinutes} min cook</span><span><Utensils size={14} /> Serves {recipe.servings}</span><DietBadge label={recipe.dietLabel} /></div></div><button className={`voice-button ${speaking ? 'is-speaking' : ''}`} onClick={toggleVoice} data-testid="button-voice-playback"><AudioLines size={17} />{speaking ? 'Stop voice' : 'Listen'}</button></div>
+        {recipes.length > 1 && <div className="scanner-tabs ai-recipe-tabs" role="tablist" aria-label="Recipe options">{recipes.map((item, index) => <button key={`${item.name}-${index}`} role="tab" aria-selected={index === selectedIndex} className={index === selectedIndex ? 'selected' : ''} onClick={() => { setSelectedIndex(index); setActiveStep(0); stopVoice(); }} data-testid={`tab-recipe-${index}`}>{item.name}</button>)}</div>}
+        {(allergies.length > 0 || meta.removed.length > 0) && <div className="allergy-warning"><AlertTriangle size={16} /><div><strong>Allergy & diet check</strong><span>{allergies.length ? `Checked against: ${allergies.join(', ')}. ` : ''}{meta.removed.length ? `${meta.removed.length} option${meta.removed.length > 1 ? 's were' : ' was'} removed for conflicting with your allergies, diet or exclusions. ` : ''}Always read labels; this can’t guarantee a food is safe for an allergy.</span></div></div>}
+        <div className="steps-heading"><span className="mini-heading">COOKING, ONE STEP AT A TIME</span><span>{activeStep + 1} / {recipe.steps.length}</span></div><div className="step-progress">{recipe.steps.map((_, i) => <i key={`step-${i}`} className={i <= activeStep ? 'done' : ''} />)}</div>
+        <div className="active-step"><span className="step-number">{String(activeStep + 1).padStart(2, '0')}</span><div><span className="eyebrow">STEP {activeStep + 1}</span><p>{step.text}</p>{(step.heat || step.timerMinutes) && <small className="ai-fine">{[step.heat && `Heat: ${step.heat}`, step.timerMinutes ? `Timer: ${step.timerMinutes} min` : null].filter(Boolean).join(' · ')}</small>}</div></div>
+        <div className="step-controls"><button className="button button-outline" onClick={() => { setActiveStep(Math.max(activeStep - 1, 0)); stopVoice(); }} disabled={activeStep === 0} data-testid="button-previous-step">Previous</button><button className="button button-primary" onClick={() => { setActiveStep(Math.min(activeStep + 1, recipe.steps.length - 1)); stopVoice(); }} disabled={activeStep === recipe.steps.length - 1} data-testid="button-next-step">Next step <ArrowRight size={15} /></button></div>
+        <RecipeDetails recipe={recipe} />
+        <div className="guide-extras"><details><summary>Ingredient substitutions <ChevronDown size={15} /></summary><ul>{recipe.substitutions.length ? recipe.substitutions.map((item, i) => <li key={`${i}-${item.for}`}>{item.for} → {item.use}{item.note ? ` (${item.note})` : ''}</li>) : <li>No substitutions were suggested for this recipe.</li>}</ul></details></div>
+        <div className="ai-followup"><span className="mini-heading">NOT QUITE RIGHT? ASK FOR A CHANGE</span>
+          <div className="suggestions">{FOLLOW_UPS.map(item => <button key={item} disabled={followUpMutation.isPending || aiBlocked} onClick={() => applyFollowUp(item)} data-testid={`button-followup-${item.toLowerCase().replaceAll(' ', '-')}`}>{item}</button>)}</div>
+          <div className="ai-ask-row"><input className="text-input" value={followUp} maxLength={300} onChange={e => setFollowUp(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') applyFollowUp(followUp); }} placeholder="e.g. make it spicier, or use less oil" aria-label="Ask for a change to this recipe" data-testid="input-chef-followup" />
+            <button className="button button-outline" disabled={!followUp.trim() || followUpMutation.isPending || aiBlocked} onClick={() => applyFollowUp(followUp)} data-testid="button-apply-followup">{followUpMutation.isPending ? 'Updating…' : 'Update recipe'}</button></div>
+          {followUpMutation.isError && <div className="inline-error" role="alert">{followUpMutation.error.message}</div>}</div>
+        {(meta.notes || meta.question) && <div className="ai-notice"><CircleHelp size={15} /><span>{meta.question ?? meta.notes}</span></div>}
+        <p className="estimate-note"><CircleHelp size={13} /> Nutrition is an AI estimate. Check food-safety guidance for meat, eggs and leftovers, and read labels for allergens.</p>
+      </div> : <div className="panel chef-empty"><div className="chef-art"><div className="plate-art"><span /><span /><span /><span /></div><i className="steam steam-one" /><i className="steam steam-two" /></div><span className="eyebrow">FROM IDEA TO TABLE</span><h3>A gentler way<br />to get dinner going.</h3><p>Your guide will include approachable steps, thoughtful substitutions, and allergy notes.</p><div className="empty-benefits"><span><Check size={14} /> Step-by-step pacing</span><span><Check size={14} /> Optional voice playback</span><span><Check size={14} /> Allergy-aware guidance</span></div>{(meta.question || meta.notes) && !recipes.length && <div className="ai-notice"><CircleHelp size={15} /><span>{meta.question ?? meta.notes}</span></div>}{scans.data?.length ? <div className="chef-recent">Inspired by your latest scan: <strong>{scans.data[0].dishName}</strong></div> : null}</div>}
     </div>
   </>;
 }
