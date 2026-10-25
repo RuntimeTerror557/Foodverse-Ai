@@ -263,4 +263,3 @@ Not sure where to start? Open an issue with the `question` label and we'll help 
 
 ## 📄 License
 
-No license has been specified yet. Add a `LICENSE` file (e.g. MIT) to clarify how others may use this project.
