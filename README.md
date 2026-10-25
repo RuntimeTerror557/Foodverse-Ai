@@ -151,9 +151,7 @@ pnpm --filter @workspace/food-verse-ai run dev
 - A signed, HTTP-only browser session keeps each anonymous visitor's data separate. There is **no account sign-in or cross-device sync**; each session gets its own demo records on first use.
 - Scanner photos (downscaled JPEG) and up to 6 sampled video frames are sent to the server and on to the AI provider. Videos are never uploaded whole, and audio files are not analyzed.
 - AI endpoints live under `/api/v1/ai/*` and are not yet in the generated client – the hand-written `food-ai.ts` is used until `codegen` is run.
--  API requests are validated on the server, and errors are returned in a consistent JSON format.
-
-
+-  
 ---
 
 ## ⚠️ Known Limitations
