@@ -259,4 +259,4 @@ Be respectful and constructive in issues, pull requests, and reviews. Harassment
 Not sure where to start? Open an issue with the `question` label and we'll help you out.
 
 ## 📄 License
-
+No license has been specified yet. Add a LICENSE file (e.g. MIT) to clarify how others may use this project.
